@@ -39,12 +39,20 @@ final class MarkedTile
 	private final Color color;
 	@Nullable
 	private final String label;
+	@Nullable
+	private final String note;
 
 	MarkedTile(WorldPoint point, @Nullable Color color, @Nullable String label)
+	{
+		this(point, color, label, null);
+	}
+
+	MarkedTile(WorldPoint point, @Nullable Color color, @Nullable String label, @Nullable String note)
 	{
 		this.point = point;
 		this.color = color;
 		this.label = label;
+		this.note = note;
 	}
 
 	WorldPoint getPoint()
@@ -62,5 +70,11 @@ final class MarkedTile
 	String getLabel()
 	{
 		return label;
+	}
+
+	@Nullable
+	String getNote()
+	{
+		return note;
 	}
 }

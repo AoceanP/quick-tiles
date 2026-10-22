@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import javax.inject.Inject;
 import net.runelite.api.Client;
+import net.runelite.api.Tile;
 import net.runelite.api.Perspective;
 import net.runelite.api.Player;
 import net.runelite.api.Point;
@@ -45,6 +46,8 @@ import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.ui.overlay.OverlayUtil;
+import net.runelite.client.ui.overlay.tooltip.Tooltip;
+import net.runelite.client.ui.overlay.tooltip.TooltipManager;
 
 class QuickTilesOverlay extends Overlay
 {
@@ -57,13 +60,15 @@ class QuickTilesOverlay extends Overlay
 	private final Client client;
 	private final QuickTilesPlugin plugin;
 	private final QuickTilesConfig config;
+	private final TooltipManager tooltipManager;
 
 	@Inject
-	QuickTilesOverlay(Client client, QuickTilesPlugin plugin, QuickTilesConfig config)
+	QuickTilesOverlay(Client client, QuickTilesPlugin plugin, QuickTilesConfig config, TooltipManager tooltipManager)
 	{
 		this.client = client;
 		this.plugin = plugin;
 		this.config = config;
+		this.tooltipManager = tooltipManager;
 		setPosition(OverlayPosition.DYNAMIC);
 		setPriority(PRIORITY_LOW);
 		setLayer(OverlayLayer.ABOVE_SCENE);
@@ -72,17 +77,24 @@ class QuickTilesOverlay extends Overlay
 	@Override
 	public Dimension render(Graphics2D graphics)
 	{
-		Map<Integer, List<MarkedTile>> marked = plugin.getMarked();
 		Player player = client.getLocalPlayer();
-		if (!plugin.isTilesVisible() || marked.isEmpty() || player == null)
+		if (player == null)
+		{
+			return null;
+		}
+		graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+		Map<Integer, List<MarkedTile>> marked = plugin.getMarked();
+		if (!plugin.isTilesVisible() || marked.isEmpty())
 		{
 			return null;
 		}
 
-		graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 		Stroke stroke = new BasicStroke(config.borderWidth());
 		WorldPoint playerTile = player.getWorldLocation();
 		boolean checkDistance = player.getWorldView().isTopLevel();
+		WorldPoint hovered = hoveredSceneTile(player);
+		String hoverNote = null;
 
 		for (Map.Entry<Integer, List<MarkedTile>> entry : marked.entrySet())
 		{
@@ -101,10 +113,33 @@ class QuickTilesOverlay extends Overlay
 					continue;
 				}
 				draw(graphics, wv, tile, stroke);
+				if (tile.getNote() != null && point.equals(hovered))
+				{
+					hoverNote = tile.getNote();
+				}
 			}
+		}
+		if (hoverNote != null && !client.isMenuOpen())
+		{
+			tooltipManager.add(new Tooltip(hoverNote));
 		}
 		return null;
 	}
+
+	/**
+	 * The scene tile under the mouse, in the same coordinates as marked tiles.
+	 */
+	private WorldPoint hoveredSceneTile(Player player)
+	{
+		WorldView wv = player.getWorldView();
+		Tile tile = wv == null ? null : wv.getSelectedSceneTile();
+		if (tile == null && wv != null && !wv.isTopLevel())
+		{
+			tile = client.getTopLevelWorldView().getSelectedSceneTile();
+		}
+		return tile == null ? null : tile.getWorldLocation();
+	}
+
 
 	private void draw(Graphics2D graphics, WorldView wv, MarkedTile tile, Stroke stroke)
 	{

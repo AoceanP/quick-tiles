@@ -25,6 +25,8 @@
 package com.quicktiles;
 
 import java.awt.Color;
+import java.awt.event.InputEvent;
+import java.awt.event.KeyEvent;
 import net.runelite.client.config.Alpha;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
@@ -39,6 +41,7 @@ public interface QuickTilesConfig extends Config
 	String GROUP = "quicktiles";
 	String BRUSH_KEY = "brush";
 	String ORB_OPTIONS_KEY = "orbOptions";
+	String PANEL_KEY = "sidebarPanel";
 
 	enum MenuMode
 	{
@@ -101,6 +104,7 @@ public interface QuickTilesConfig extends Config
 	)
 	String appearanceSection = "appearance";
 
+
 	@ConfigItem(
 		keyName = "markHotkey",
 		name = "Mark hotkey",
@@ -123,7 +127,7 @@ public interface QuickTilesConfig extends Config
 	)
 	default Keybind colourHotkey()
 	{
-		return Keybind.NOT_SET;
+		return new Keybind(KeyEvent.VK_D, InputEvent.CTRL_DOWN_MASK);
 	}
 
 	@ConfigItem(
@@ -159,6 +163,42 @@ public interface QuickTilesConfig extends Config
 		section = markingSection
 	)
 	default boolean orbOptions()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "undoHotkey",
+		name = "Undo hotkey",
+		description = "Undoes your last mark, paint stroke or area.",
+		position = 7,
+		section = markingSection
+	)
+	default Keybind undoHotkey()
+	{
+		return new Keybind(KeyEvent.VK_Z, InputEvent.CTRL_DOWN_MASK);
+	}
+
+	@ConfigItem(
+		keyName = "redoHotkey",
+		name = "Redo hotkey",
+		description = "Puts back what you last undid.",
+		position = 8,
+		section = markingSection
+	)
+	default Keybind redoHotkey()
+	{
+		return new Keybind(KeyEvent.VK_Y, InputEvent.CTRL_DOWN_MASK);
+	}
+
+	@ConfigItem(
+		keyName = PANEL_KEY,
+		name = "Sidebar panel",
+		description = "Adds a Quick Tiles button to the sidebar, with your colours, undo, export and hotkeys.",
+		position = 10,
+		section = markingSection
+	)
+	default boolean sidebarPanel()
 	{
 		return true;
 	}
@@ -213,6 +253,58 @@ public interface QuickTilesConfig extends Config
 	default Color colour4()
 	{
 		return new Color(0xFF, 0x46, 0x46);
+	}
+
+	@Alpha
+	@ConfigItem(
+		keyName = "colour5",
+		name = "Colour 5",
+		description = "The fifth marking colour.",
+		position = 4,
+		section = coloursSection
+	)
+	default Color colour5()
+	{
+		return new Color(0xC7, 0x7D, 0xFF);
+	}
+
+	@Alpha
+	@ConfigItem(
+		keyName = "colour6",
+		name = "Colour 6",
+		description = "The sixth marking colour.",
+		position = 5,
+		section = coloursSection
+	)
+	default Color colour6()
+	{
+		return new Color(0xFF, 0x9F, 0x40);
+	}
+
+	@Alpha
+	@ConfigItem(
+		keyName = "colour7",
+		name = "Colour 7",
+		description = "The seventh marking colour.",
+		position = 6,
+		section = coloursSection
+	)
+	default Color colour7()
+	{
+		return new Color(0xFF, 0xFF, 0xFF);
+	}
+
+	@Alpha
+	@ConfigItem(
+		keyName = "colour8",
+		name = "Colour 8",
+		description = "The eighth marking colour.",
+		position = 7,
+		section = coloursSection
+	)
+	default Color colour8()
+	{
+		return new Color(0x8C, 0x8C, 0x8C);
 	}
 
 	@ConfigItem(

@@ -9,13 +9,27 @@ Mark tiles without digging through menus. Point at a tile and press a key, or ho
 - **Erase:** start on a tile that already has your current colour, and the same key erases instead, as a tap or a sweep.
 - **Recolour:** start on a tile of another colour to paint over it in your current colour.
 - **Right-click:** *Mark tile* / *Unmark tile* is added to the ground's right-click menu, with no Shift needed. You can change this to Shift-only or off.
-- **Shift + right-click** a marked tile to pick one of your four colours or give it a label.
+- **Shift + right-click** a marked tile to pick one of your colours, or give it a label or a note.
 
 Tip: pick a key you don't type in chat, like a function key or a mouse button bound to a key. While the hotkey is held, its letter won't reach the chatbox.
 
+## Undo and the sidebar
+
+- **Ctrl+Z / Ctrl+Y** undo and redo your last mark or paint stroke. A whole stroke undoes in one go.
+- **Ctrl+D** switches to the next colour.
+- Right-click works exactly as before.
+
+Click the Quick Tiles button in the sidebar to see:
+
+- **Colour:** your 8 colours. Click one to mark in it.
+- **Undo, Redo, Export and Import.**
+- **Hotkeys:** every hotkey, with a **Change** button: click it and press the key you want. Keys used by another action are flagged.
+
+Shift + right-click a marked tile to give it a label, a **note** (shown when you point at the tile), or a colour.
+
 ## Colours
 
-There are four colours, set in the *Colours* section. Press your *Next colour hotkey* to switch between them. A chat message shows which colour you're on.
+There are eight colours, set in the *Colours* section. Press your *Next colour hotkey* to switch between them. A chat message shows which colour you're on.
 
 ## Show or hide
 

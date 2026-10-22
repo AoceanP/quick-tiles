@@ -26,6 +26,7 @@ package com.quicktiles;
 
 import com.google.inject.Provides;
 import java.awt.Color;
+import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -33,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
+import javax.swing.SwingUtilities;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
@@ -53,16 +55,21 @@ import net.runelite.client.callback.ClientThread;
 import net.runelite.client.chat.ChatMessageManager;
 import net.runelite.client.chat.QueuedMessage;
 import net.runelite.client.config.ConfigManager;
+import net.runelite.client.config.Keybind;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.events.ProfileChanged;
 import net.runelite.client.game.chatbox.ChatboxPanelManager;
+import net.runelite.client.input.KeyListener;
 import net.runelite.client.input.KeyManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.ui.ClientToolbar;
+import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.ColorUtil;
 import net.runelite.client.util.HotkeyListener;
+import net.runelite.client.util.ImageUtil;
 
 @PluginDescriptor(
 	name = "Quick Tiles",
@@ -71,7 +78,7 @@ import net.runelite.client.util.HotkeyListener;
 )
 public class QuickTilesPlugin extends Plugin
 {
-	static final int COLOUR_COUNT = 4;
+	static final int COLOUR_COUNT = 8;
 
 	@Inject
 	private Client client;
@@ -104,6 +111,9 @@ public class QuickTilesPlugin extends Plugin
 	private ChatboxPanelManager chatboxPanelManager;
 
 	@Inject
+	private ClientToolbar clientToolbar;
+
+	@Inject
 	private TileStore store;
 
 	@Inject
@@ -122,6 +132,27 @@ public class QuickTilesPlugin extends Plugin
 	private TileEdits.Mode strokeMode;
 	@Nullable
 	private WorldPoint lastStrokeTile;
+
+	private final TileHistory history = new TileHistory();
+	private final TileHistory.Regions regions = new TileHistory.Regions()
+	{
+		@Override
+		public List<TilePoint> get(int regionId)
+		{
+			return store.get(regionId);
+		}
+
+		@Override
+		public void save(int regionId, List<TilePoint> tiles)
+		{
+			store.save(regionId, tiles);
+		}
+	};
+
+	@Nullable
+	private QuickTilesPanel panel;
+	@Nullable
+	private NavigationButton navButton;
 
 	private final HotkeyListener markListener = new HotkeyListener(() -> config.markHotkey())
 	{
@@ -156,6 +187,24 @@ public class QuickTilesPlugin extends Plugin
 		}
 	};
 
+	private final HotkeyListener undoListener = new HotkeyListener(() -> config.undoHotkey())
+	{
+		@Override
+		public void hotkeyPressed()
+		{
+			clientThread.invoke(QuickTilesPlugin.this::undo);
+		}
+	};
+
+	private final HotkeyListener redoListener = new HotkeyListener(() -> config.redoHotkey())
+	{
+		@Override
+		public void hotkeyPressed()
+		{
+			clientThread.invoke(QuickTilesPlugin.this::redo);
+		}
+	};
+
 	@Provides
 	QuickTilesConfig provideConfig(ConfigManager configManager)
 	{
@@ -168,12 +217,17 @@ public class QuickTilesPlugin extends Plugin
 		tilesVisible = true;
 		overlayManager.add(overlay);
 		overlayManager.add(minimapOverlay);
-		keyManager.registerKeyListener(markListener);
-		keyManager.registerKeyListener(colourListener);
-		keyManager.registerKeyListener(toggleListener);
+		for (KeyListener listener : listeners())
+		{
+			keyManager.registerKeyListener(listener);
+		}
 		if (config.orbOptions())
 		{
 			sharing.addMenuOptions();
+		}
+		if (config.sidebarPanel())
+		{
+			addPanel();
 		}
 		clientThread.invoke(() -> loadTiles());
 	}
@@ -183,13 +237,21 @@ public class QuickTilesPlugin extends Plugin
 	{
 		overlayManager.remove(overlay);
 		overlayManager.remove(minimapOverlay);
-		keyManager.unregisterKeyListener(markListener);
-		keyManager.unregisterKeyListener(colourListener);
-		keyManager.unregisterKeyListener(toggleListener);
+		for (KeyListener listener : listeners())
+		{
+			keyManager.unregisterKeyListener(listener);
+		}
 		sharing.removeMenuOptions();
+		removePanel();
 		stroking = false;
+		history.clear();
 		marked.clear();
 		store.clearCache();
+	}
+
+	private KeyListener[] listeners()
+	{
+		return new KeyListener[]{markListener, colourListener, toggleListener, undoListener, redoListener};
 	}
 
 	@Subscribe
@@ -198,6 +260,7 @@ public class QuickTilesPlugin extends Plugin
 		clientThread.invoke(() ->
 		{
 			store.clearCache();
+			history.clear();
 			loadTiles();
 		});
 	}
@@ -221,7 +284,8 @@ public class QuickTilesPlugin extends Plugin
 		{
 			return;
 		}
-		if (event.getKey().startsWith(TileStore.REGION_PREFIX))
+		String key = event.getKey();
+		if (key.startsWith(TileStore.REGION_PREFIX))
 		{
 			// Tiles changed outside this plugin, e.g. a profile sync.
 			clientThread.invoke(() ->
@@ -230,13 +294,26 @@ public class QuickTilesPlugin extends Plugin
 				loadTiles();
 			});
 		}
-		else if (QuickTilesConfig.ORB_OPTIONS_KEY.equals(event.getKey()))
+		else if (QuickTilesConfig.ORB_OPTIONS_KEY.equals(key))
 		{
 			sharing.removeMenuOptions();
 			if (config.orbOptions())
 			{
 				sharing.addMenuOptions();
 			}
+		}
+		else if (QuickTilesConfig.PANEL_KEY.equals(key))
+		{
+			removePanel();
+			if (config.sidebarPanel())
+			{
+				addPanel();
+			}
+		}
+		else
+		{
+			// Colours and hotkeys show in the panel.
+			refreshPanel();
 		}
 	}
 
@@ -298,7 +375,13 @@ public class QuickTilesPlugin extends Plugin
 			.setType(MenuAction.RUNELITE)
 			.onClick(e -> promptLabel(existing));
 
-		MenuEntry colourEntry = menu.createMenuEntry(-3)
+		menu.createMenuEntry(-3)
+			.setOption("Note")
+			.setTarget(ColorUtil.wrapWithColorTag("Tile", colourOf(existing)))
+			.setType(MenuAction.RUNELITE)
+			.onClick(e -> promptNote(existing));
+
+		MenuEntry colourEntry = menu.createMenuEntry(-4)
 			.setOption("Colour")
 			.setTarget(ColorUtil.wrapWithColorTag("Tile", colourOf(existing)))
 			.setType(MenuAction.RUNELITE);
@@ -324,11 +407,17 @@ public class QuickTilesPlugin extends Plugin
 		stroking = true;
 		strokeMode = null;
 		lastStrokeTile = null;
+		history.begin();
 		paintHoveredTile();
 	}
 
 	private void endStroke()
 	{
+		if (stroking)
+		{
+			history.end(regions);
+			refreshPanel();
+		}
 		stroking = false;
 		strokeMode = null;
 		lastStrokeTile = null;
@@ -346,7 +435,7 @@ public class QuickTilesPlugin extends Plugin
 		}
 		lastStrokeTile = point;
 
-		TilePoint target = TilePoint.of(point, null);
+		TilePoint target = newTile(point);
 		List<TilePoint> tiles = store.get(target.getRegionId());
 		Color brush = brushColour();
 		if (strokeMode == null)
@@ -354,6 +443,7 @@ public class QuickTilesPlugin extends Plugin
 			int index = tiles.indexOf(target);
 			strokeMode = TileEdits.modeFor(index >= 0 ? tiles.get(index) : null, brush);
 		}
+		history.touch(target.getRegionId(), tiles);
 		if (TileEdits.apply(tiles, target, strokeMode, brush))
 		{
 			store.save(target.getRegionId(), tiles);
@@ -361,26 +451,38 @@ public class QuickTilesPlugin extends Plugin
 		}
 	}
 
+	private static TilePoint newTile(WorldPoint point)
+	{
+		return TilePoint.of(point, null);
+	}
+
 	private void toggleTile(WorldPoint point)
 	{
-		TilePoint target = TilePoint.of(point, null);
+		TilePoint target = newTile(point);
 		List<TilePoint> tiles = store.get(target.getRegionId());
 		TileEdits.Mode mode = tiles.contains(target) ? TileEdits.Mode.ERASE : TileEdits.Mode.PAINT;
+		history.begin();
+		history.touch(target.getRegionId(), tiles);
 		if (TileEdits.apply(tiles, target, mode, brushColour()))
 		{
 			store.save(target.getRegionId(), tiles);
 			loadTiles();
 		}
+		history.end(regions);
+		refreshPanel();
 	}
 
 	private void recolour(TilePoint existing, Color colour)
 	{
 		List<TilePoint> tiles = store.get(existing.getRegionId());
+		history.begin();
+		history.touch(existing.getRegionId(), tiles);
 		if (TileEdits.apply(tiles, existing, TileEdits.Mode.PAINT, colour))
 		{
 			store.save(existing.getRegionId(), tiles);
 			loadTiles();
 		}
+		history.end(regions);
 	}
 
 	private void promptLabel(TilePoint existing)
@@ -394,35 +496,142 @@ public class QuickTilesPlugin extends Plugin
 	private void setLabel(TilePoint existing, String input)
 	{
 		String label = input == null || input.trim().isEmpty() ? null : input.trim();
+		updateTile(existing, t -> t.withLabel(label));
+	}
+
+	private void promptNote(TilePoint existing)
+	{
+		chatboxPanelManager.openTextInput("Tile note (shown when you point at the tile)")
+			.value(existing.getNote() == null ? "" : existing.getNote())
+			.onDone((String input) -> clientThread.invoke(() ->
+			{
+				String note = input == null || input.trim().isEmpty() ? null : input.trim();
+				updateTile(existing, t -> t.withNote(note));
+			}))
+			.build();
+	}
+
+	/**
+	 * Changes one saved tile, as an undoable edit.
+	 */
+	private void updateTile(TilePoint existing, java.util.function.UnaryOperator<TilePoint> change)
+	{
 		List<TilePoint> tiles = store.get(existing.getRegionId());
 		int index = tiles.indexOf(existing);
 		if (index < 0)
 		{
 			return;
 		}
-		tiles.set(index, tiles.get(index).withLabel(label));
+		history.begin();
+		history.touch(existing.getRegionId(), tiles);
+		tiles.set(index, change.apply(tiles.get(index)));
 		store.save(existing.getRegionId(), tiles);
+		history.end(regions);
 		loadTiles();
 	}
 
-	private void nextColour()
+	void nextColour()
 	{
-		int next = (brushIndex() + 1) % COLOUR_COUNT;
-		configManager.setConfiguration(QuickTilesConfig.GROUP, QuickTilesConfig.BRUSH_KEY, next);
-		chat("Quick Tiles: now marking in " + ColorUtil.wrapWithColorTag("Colour " + (next + 1), colour(next)) + ".");
+		setBrush((brushIndex() + 1) % COLOUR_COUNT);
+		chat("Quick Tiles: now marking in " + ColorUtil.wrapWithColorTag("Colour " + (brushIndex() + 1), brushColour()) + ".");
 	}
 
-	private void toggleVisible()
+	void setBrush(int index)
+	{
+		configManager.setConfiguration(QuickTilesConfig.GROUP, QuickTilesConfig.BRUSH_KEY, Math.floorMod(index, COLOUR_COUNT));
+	}
+
+	void toggleVisible()
 	{
 		tilesVisible = !tilesVisible;
 		chat(tilesVisible ? "Quick Tiles: tiles shown." : "Quick Tiles: tiles hidden. Press your show/hide hotkey again to bring them back.");
 	}
 
+	// ---- undo ----
+
+	void undo()
+	{
+		if (stroking)
+		{
+			return;
+		}
+		if (history.undo(regions))
+		{
+			loadTiles();
+		}
+		refreshPanel();
+	}
+
+	void redo()
+	{
+		if (stroking)
+		{
+			return;
+		}
+		if (history.redo(regions))
+		{
+			loadTiles();
+		}
+		refreshPanel();
+	}
+
+
+
+	private void addPanel()
+	{
+		panel = new QuickTilesPanel(this, config, configManager);
+		BufferedImage icon = ImageUtil.loadImageResource(QuickTilesPlugin.class, "panel_icon.png");
+		navButton = NavigationButton.builder()
+			.tooltip("Quick Tiles")
+			.icon(icon)
+			.priority(8)
+			.panel(panel)
+			.build();
+		clientToolbar.addNavigation(navButton);
+		refreshPanel();
+	}
+
+	private void removePanel()
+	{
+		if (navButton != null)
+		{
+			clientToolbar.removeNavigation(navButton);
+		}
+		navButton = null;
+		panel = null;
+	}
+
+	/**
+	 * Updates the sidebar from the client thread's state.
+	 */
+	void refreshPanel()
+	{
+		QuickTilesPanel p = panel;
+		if (p == null)
+		{
+			return;
+		}
+		clientThread.invokeLater(() ->
+		{
+			QuickTilesPanel.State state = new QuickTilesPanel.State();
+			for (int i = 0; i < COLOUR_COUNT; i++)
+			{
+				state.colours.add(colour(i));
+			}
+			state.brush = brushIndex();
+			state.canUndo = history.canUndo();
+			state.canRedo = history.canRedo();
+			SwingUtilities.invokeLater(() -> p.update(state));
+		});
+	}
+
+	// ---- shared helpers ----
+
 	/**
 	 * The world tile under the mouse, or null when the mouse isn't over the game world.
 	 */
 	@Nullable
-	private WorldPoint hoveredTile()
+	WorldPoint hoveredTile()
 	{
 		if (client.isMenuOpen())
 		{
@@ -463,27 +672,27 @@ public class QuickTilesPlugin extends Plugin
 
 	private void loadTiles(WorldView wv)
 	{
-		int[] regions = wv.getMapRegions();
-		if (regions == null)
+		int[] mapRegions = wv.getMapRegions();
+		if (mapRegions == null)
 		{
 			marked.remove(wv.getId());
 			return;
 		}
 		List<MarkedTile> tiles = new ArrayList<>();
-		for (int region : regions)
+		for (int region : mapRegions)
 		{
 			for (TilePoint saved : store.get(region))
 			{
 				for (WorldPoint local : WorldPoint.toLocalInstance(wv, saved.toWorldPoint()))
 				{
-					tiles.add(new MarkedTile(local, saved.getColor(), saved.getLabel()));
+					tiles.add(new MarkedTile(local, saved.getColor(), saved.getLabel(), saved.getNote()));
 				}
 			}
 		}
 		marked.put(wv.getId(), tiles);
 	}
 
-	// ---- for overlays and sharing ----
+	// ---- for overlays, the panel and sharing ----
 
 	Map<Integer, List<MarkedTile>> getMarked()
 	{
@@ -493,6 +702,16 @@ public class QuickTilesPlugin extends Plugin
 	boolean isTilesVisible()
 	{
 		return tilesVisible;
+	}
+
+	TileSharing getSharing()
+	{
+		return sharing;
+	}
+
+	ClientThread getClientThread()
+	{
+		return clientThread;
 	}
 
 	int brushIndex()
@@ -515,6 +734,14 @@ public class QuickTilesPlugin extends Plugin
 				return config.colour3();
 			case 3:
 				return config.colour4();
+			case 4:
+				return config.colour5();
+			case 5:
+				return config.colour6();
+			case 6:
+				return config.colour7();
+			case 7:
+				return config.colour8();
 			default:
 				return config.colour1();
 		}
@@ -526,6 +753,37 @@ public class QuickTilesPlugin extends Plugin
 	Color colourOf(@Nullable TilePoint tile)
 	{
 		return tile == null || tile.getColor() == null ? config.colour1() : tile.getColor();
+	}
+
+	/**
+	 * The hotkeys the panel can change, as config key and display name, in order.
+	 */
+	static String[][] hotkeys()
+	{
+		return new String[][]{
+			{"markHotkey", "Mark / paint"},
+			{"colourHotkey", "Next colour"},
+			{"undoHotkey", "Undo"},
+			{"redoHotkey", "Redo"},
+			{"toggleHotkey", "Show / hide"},
+		};
+	}
+
+	Keybind hotkey(String key)
+	{
+		switch (key)
+		{
+			case "markHotkey":
+				return config.markHotkey();
+			case "colourHotkey":
+				return config.colourHotkey();
+			case "undoHotkey":
+				return config.undoHotkey();
+			case "redoHotkey":
+				return config.redoHotkey();
+			default:
+				return config.toggleHotkey();
+		}
 	}
 
 	void chat(String message)

@@ -99,7 +99,12 @@ class TileStore
 	 */
 	List<Integer> groundMarkerRegions()
 	{
-		String prefix = GROUND_MARKERS_GROUP + "." + REGION_PREFIX;
+		return regionsIn(GROUND_MARKERS_GROUP);
+	}
+
+	private List<Integer> regionsIn(String group)
+	{
+		String prefix = group + "." + REGION_PREFIX;
 		List<Integer> regions = new ArrayList<>();
 		for (String key : configManager.getConfigurationKeys(prefix))
 		{
@@ -109,7 +114,7 @@ class TileStore
 			}
 			catch (NumberFormatException e)
 			{
-				log.debug("Skipping odd Ground Markers key {}", key);
+				log.debug("Skipping odd tile key {}", key);
 			}
 		}
 		return regions;

@@ -25,7 +25,7 @@ dependencies {
 }
 
 group = 'com.quicktiles'
-version = '1.0.0'
+version = '1.1.0'
 
 // The Plugin Hub compiles with Java 11. Building with release 11 means any newer
 // JDK (25, 26) can be used locally but can't accidentally use APIs the hub lacks.

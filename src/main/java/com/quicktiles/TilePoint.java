@@ -33,7 +33,10 @@ import net.runelite.api.coords.WorldPoint;
  * One saved tile. The field names match RuneLite's Ground Markers plugin, so exports from either
  * plugin (and shared tile packs) can be pasted into the other.
  * <p>
- * Two points are equal when they are the same tile; colour and label are ignored.
+ * Two points are equal when they are the same tile; colour, label and note are ignored.
+ * <p>
+ * The note is Quick Tiles' own addition. Ground Markers ignores fields it doesn't know, so exports
+ * still paste into it, and tiles without one (older saves, Ground Markers, tile packs) have no note.
  */
 final class TilePoint
 {
@@ -45,6 +48,8 @@ final class TilePoint
 	private Color color;
 	@Nullable
 	private String label;
+	@Nullable
+	private String note;
 
 	// For Gson.
 	private TilePoint()
@@ -53,12 +58,19 @@ final class TilePoint
 
 	TilePoint(int regionId, int regionX, int regionY, int z, @Nullable Color color, @Nullable String label)
 	{
+		this(regionId, regionX, regionY, z, color, label, null);
+	}
+
+	TilePoint(int regionId, int regionX, int regionY, int z, @Nullable Color color, @Nullable String label,
+		@Nullable String note)
+	{
 		this.regionId = regionId;
 		this.regionX = regionX;
 		this.regionY = regionY;
 		this.z = z;
 		this.color = color;
 		this.label = label;
+		this.note = note;
 	}
 
 	static TilePoint of(WorldPoint point, @Nullable Color color)
@@ -88,14 +100,28 @@ final class TilePoint
 		return label;
 	}
 
+	/**
+	 * A longer note, shown when the mouse is over the tile.
+	 */
+	@Nullable
+	String getNote()
+	{
+		return note;
+	}
+
 	TilePoint withColor(@Nullable Color newColor)
 	{
-		return new TilePoint(regionId, regionX, regionY, z, newColor, label);
+		return new TilePoint(regionId, regionX, regionY, z, newColor, label, note);
 	}
 
 	TilePoint withLabel(@Nullable String newLabel)
 	{
-		return new TilePoint(regionId, regionX, regionY, z, color, newLabel);
+		return new TilePoint(regionId, regionX, regionY, z, color, newLabel, note);
+	}
+
+	TilePoint withNote(@Nullable String newNote)
+	{
+		return new TilePoint(regionId, regionX, regionY, z, color, label, newNote);
 	}
 
 	/**

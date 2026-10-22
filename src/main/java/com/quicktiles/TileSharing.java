@@ -104,23 +104,44 @@ class TileSharing
 		return regions == null ? new int[0] : regions;
 	}
 
-	private void exportTiles()
+	/**
+	 * Copies the tiles around you: the regions loaded right now.
+	 */
+	void exportTiles()
 	{
 		List<TilePoint> tiles = new ArrayList<>();
 		for (int region : loadedRegions())
 		{
 			tiles.addAll(store.get(region));
 		}
-		if (tiles.isEmpty())
-		{
-			plugin.chat("Quick Tiles: there are no marked tiles nearby to export.");
-			return;
-		}
-		Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(store.toJson(tiles)), null);
-		plugin.chat("Quick Tiles: copied " + count(tiles.size()) + " to your clipboard. They also paste into Ground Markers.");
+		copy(tiles, "nearby");
 	}
 
-	private void promptImport()
+	/**
+	 * Copies tiles to the clipboard as a Ground Markers style export.
+	 *
+	 * @param where e.g. "nearby", "in that area", "in Vorkath"
+	 */
+	void copy(List<TilePoint> tiles, String where)
+	{
+		if (tiles.isEmpty())
+		{
+			plugin.chat("Quick Tiles: there are no marked tiles " + where + " to export.");
+			return;
+		}
+		try
+		{
+			Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(store.toJson(tiles)), null);
+		}
+		catch (IllegalStateException e)
+		{
+			plugin.chat("Quick Tiles: your clipboard is busy. Try again.");
+			return;
+		}
+		plugin.chat("Quick Tiles: copied " + count(tiles.size()) + " " + where + " to your clipboard. They also paste into Ground Markers.");
+	}
+
+	void promptImport()
 	{
 		String text;
 		try
