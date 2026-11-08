@@ -95,6 +95,14 @@ class TileStore
 	}
 
 	/**
+	 * Every region with Quick Tiles saved, for groups and their counts.
+	 */
+	List<Integer> allRegions()
+	{
+		return regionsIn(QuickTilesConfig.GROUP);
+	}
+
+	/**
 	 * Every region that has Ground Markers tiles saved, for the "copy from Ground Markers" option.
 	 */
 	List<Integer> groundMarkerRegions()

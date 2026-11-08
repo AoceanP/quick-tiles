@@ -9,23 +9,25 @@ Mark tiles without digging through menus. Point at a tile and press a key, or ho
 - **Erase:** start on a tile that already has your current colour, and the same key erases instead, as a tap or a sweep.
 - **Recolour:** start on a tile of another colour to paint over it in your current colour.
 - **Right-click:** *Mark tile* / *Unmark tile* is added to the ground's right-click menu, with no Shift needed. You can change this to Shift-only or off.
-- **Shift + right-click** a marked tile to pick one of your colours, or give it a label or a note.
+- **Shift + right-click** a marked tile to pick one of your colours, give it a label or a note, or put it in a group.
 
 Tip: pick a key you don't type in chat, like a function key or a mouse button bound to a key. While the hotkey is held, its letter won't reach the chatbox.
 
-## Undo and the sidebar
+## Shortcuts, groups and the sidebar
 
 - **Ctrl+Z / Ctrl+Y** undo and redo your last mark or paint stroke. A whole stroke undoes in one go.
 - **Ctrl+D** switches to the next colour.
+- **Ctrl+G** switches which group new tiles go into.
 - Right-click works exactly as before.
 
 Click the Quick Tiles button in the sidebar to see:
 
 - **Colour:** your 8 colours. Click one to mark in it.
-- **Undo, Redo, Export and Import.**
+- **Groups:** put tiles in named groups, e.g. one per boss. Click the dot to show or hide a group, click its name to put new tiles in it, and right-click it to rename, export or delete it. Each group shows how many tiles it has, and how many are around you.
+- **Undo, Redo, Export and Import.** Export lets you pick: tiles around you, or one group.
 - **Hotkeys:** every hotkey, with a **Change** button: click it and press the key you want. Keys used by another action are flagged.
 
-Shift + right-click a marked tile to give it a label, a **note** (shown when you point at the tile), or a colour.
+Shift + right-click a marked tile to give it a label, a **note** (shown when you point at the tile), a group or a colour.
 
 ## Colours
 
@@ -52,6 +54,6 @@ Right-click the world map orb next to the minimap:
 - **Copy Ground Markers to Quick Tiles** brings over every tile you marked with RuneLite's Ground Markers plugin. Your Ground Markers are left untouched.
 - **Clear Quick Tiles** removes the tiles around you, after asking first.
 
-Exports use the same format as Ground Markers, so tile packs shared on the wiki and Reddit paste straight in, and your Quick Tiles paste into Ground Markers too.
+Exports use the same format as Ground Markers, so tile packs shared on the wiki and Reddit paste straight in, and your Quick Tiles paste into Ground Markers too. Tiles exported from a group carry the group's name, so a friend importing them gets the same group.
 
 Tiles are saved in your RuneLite profile, per map region, and work inside instances.

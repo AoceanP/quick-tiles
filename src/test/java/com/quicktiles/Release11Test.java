@@ -41,7 +41,7 @@ import static org.junit.Assert.assertTrue;
 import org.junit.Test;
 
 /**
- * Quick Tiles 1.1: notes, undo and redo, 8 colours, Ctrl shortcuts.
+ * Quick Tiles 1.1 and 1.1.1: groups, notes, undo and redo, 8 colours, Ctrl shortcuts.
  */
 public class Release11Test
 {
@@ -74,33 +74,48 @@ public class Release11Test
 		return new TilePoint(12850, x, 10, 0, null, null);
 	}
 
-	// ---- saving: notes ride along, Ground Markers still reads it ----
+	// ---- saving: groups and notes ride along, Ground Markers still reads it ----
 
 	@Test
-	public void noteSurvivesSaving()
+	public void groupAndNoteSurviveSaving()
 	{
-		List<TilePoint> tiles = Arrays.asList(tile(1).withColor(YELLOW).withNote("Stand here for spawn"));
+		List<TilePoint> tiles = Arrays.asList(tile(1).withColor(YELLOW).withGroup("Vorkath").withNote("Stand here for spawn"));
 		TilePoint back = store.parse(store.toJson(tiles)).get(0);
+		assertEquals("Vorkath", back.getGroup());
 		assertEquals("Stand here for spawn", back.getNote());
 		assertEquals(YELLOW, back.getColor());
 	}
 
 	@Test
-	public void oldSavesAndGroundMarkersHaveNoNote()
+	public void oldSavesAndGroundMarkersHaveNoGroup()
 	{
 		List<TilePoint> tiles = store.parse("[{\"regionId\":12850,\"regionX\":20,\"regionY\":31,\"z\":0,\"color\":\"#FFFF0000\"}]");
+		assertNull(tiles.get(0).getGroup());
 		assertNull(tiles.get(0).getNote());
 	}
 
 	@Test
 	public void changesKeepTheOtherFields()
 	{
-		TilePoint t = tile(1).withColor(YELLOW).withLabel("A").withNote("note");
+		TilePoint t = tile(1).withColor(YELLOW).withLabel("A").withGroup("Zulrah").withNote("note");
 		TilePoint recoloured = t.withColor(BLUE);
 		assertEquals("A", recoloured.getLabel());
+		assertEquals("Zulrah", recoloured.getGroup());
 		assertEquals("note", recoloured.getNote());
-		// The same tile, whatever its colour and note.
+		// The same tile, whatever its group.
 		assertEquals(t, tile(1));
+	}
+
+	@Test
+	public void newTilesTakeTheGroupTheyrePaintedIn()
+	{
+		List<TilePoint> tiles = new ArrayList<>();
+		TileEdits.apply(tiles, tile(1).withGroup("Vorkath"), TileEdits.Mode.PAINT, YELLOW);
+		assertEquals("Vorkath", tiles.get(0).getGroup());
+		// Recolouring keeps the tile's own group.
+		TileEdits.apply(tiles, tile(1).withGroup("Other"), TileEdits.Mode.PAINT, BLUE);
+		assertEquals("Vorkath", tiles.get(0).getGroup());
+		assertEquals(BLUE, tiles.get(0).getColor());
 	}
 
 	// ---- undo / redo ----
@@ -197,7 +212,74 @@ public class Release11Test
 		history.end(regions);
 	}
 
+	// ---- groups ----
 
+	@Test
+	public void groupsAddRenameRemove()
+	{
+		TileGroups groups = new TileGroups();
+		assertEquals("Vorkath", groups.add("  Vorkath "));
+		assertNull("taken, whatever the case", groups.add("vorkath"));
+		assertNull("reserved", groups.add("Ungrouped"));
+		assertNull(groups.add("   "));
+		groups.add("Zulrah");
+		assertEquals(Arrays.asList("Vorkath", "Zulrah"), groups.names());
+		assertEquals("Vorki", groups.rename("vorkath", "Vorki"));
+		assertNull(groups.rename("Vorki", "Zulrah"));
+		groups.remove("Zulrah");
+		assertEquals(Arrays.asList("Vorki"), groups.names());
+	}
+
+	@Test
+	public void hidingGroups()
+	{
+		TileGroups groups = new TileGroups();
+		groups.add("Vorkath");
+		groups.setHidden("Vorkath", true);
+		assertTrue(groups.isHidden("vorkath"));
+		assertFalse(groups.isHidden(null));
+		groups.setHidden(null, true);
+		assertTrue(groups.isHidden(null));
+		// A tile naming a group that doesn't exist shows like an ungrouped one.
+		assertNull(groups.groupOf(tile(1).withGroup("Gone")));
+		assertTrue(groups.isHidden(groups.groupOf(tile(1).withGroup("Gone"))));
+	}
+
+	@Test
+	public void cyclingTheGroupForNewTiles()
+	{
+		TileGroups groups = new TileGroups();
+		assertNull(groups.next(null));
+		groups.add("A");
+		groups.add("B");
+		assertEquals("A", groups.next(null));
+		assertEquals("B", groups.next("A"));
+		assertNull(groups.next("B"));
+	}
+
+	@Test
+	public void groupsSaveAndLoad()
+	{
+		TileGroups groups = new TileGroups();
+		groups.add("Vorkath");
+		groups.setHidden("Vorkath", true);
+		String json = RuneLiteAPI.GSON.toJson(groups.export());
+		TileGroups loaded = new TileGroups();
+		loaded.load(RuneLiteAPI.GSON.fromJson(json, TileGroups.Saved.class));
+		assertEquals(Arrays.asList("Vorkath"), loaded.names());
+		assertTrue(loaded.isHidden("Vorkath"));
+		// Junk and duplicates in a save are skipped.
+		loaded.load(RuneLiteAPI.GSON.fromJson("{\"groups\":[{\"name\":\"A\"},{\"name\":\"a\"},{\"name\":\"\"},null]}",
+			TileGroups.Saved.class));
+		assertEquals(Arrays.asList("A"), loaded.names());
+	}
+
+	@Test
+	public void longNamesAreShortened()
+	{
+		assertEquals(TileGroups.MAX_NAME, TileGroups.clean("x".repeat(80)).length());
+		assertEquals("Two words", TileGroups.clean("Two    words"));
+	}
 
 	// ---- hotkeys ----
 
@@ -210,6 +292,7 @@ public class Release11Test
 		assertEquals(new Keybind(KeyEvent.VK_Z, InputEvent.CTRL_DOWN_MASK), config.undoHotkey());
 		assertEquals(new Keybind(KeyEvent.VK_Y, InputEvent.CTRL_DOWN_MASK), config.redoHotkey());
 		assertEquals(new Keybind(KeyEvent.VK_D, InputEvent.CTRL_DOWN_MASK), config.colourHotkey());
+		assertEquals(new Keybind(KeyEvent.VK_G, InputEvent.CTRL_DOWN_MASK), config.groupHotkey());
 		// 1.0's own keys are still unset until you pick them.
 		assertEquals(Keybind.NOT_SET, config.markHotkey());
 		assertEquals(Keybind.NOT_SET, config.toggleHotkey());
@@ -220,7 +303,7 @@ public class Release11Test
 	@Test
 	public void everyPanelHotkeyHasAName()
 	{
-		assertEquals(5, QuickTilesPlugin.hotkeys().length);
+		assertEquals(6, QuickTilesPlugin.hotkeys().length);
 		assertEquals(8, QuickTilesPlugin.COLOUR_COUNT);
 		assertEquals("Not set", QuickTilesPanel.keyText(Keybind.NOT_SET));
 	}

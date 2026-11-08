@@ -24,14 +24,18 @@
  */
 package com.quicktiles;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonParseException;
 import com.google.inject.Provides;
 import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
@@ -114,6 +118,9 @@ public class QuickTilesPlugin extends Plugin
 	private ClientToolbar clientToolbar;
 
 	@Inject
+	private Gson gson;
+
+	@Inject
 	private TileStore store;
 
 	@Inject
@@ -148,6 +155,11 @@ public class QuickTilesPlugin extends Plugin
 			store.save(regionId, tiles);
 		}
 	};
+
+	private final TileGroups groups = new TileGroups();
+	// The group new tiles go into, or null for ungrouped.
+	@Nullable
+	private String activeGroup;
 
 	@Nullable
 	private QuickTilesPanel panel;
@@ -205,6 +217,15 @@ public class QuickTilesPlugin extends Plugin
 		}
 	};
 
+	private final HotkeyListener groupListener = new HotkeyListener(() -> config.groupHotkey())
+	{
+		@Override
+		public void hotkeyPressed()
+		{
+			clientThread.invoke(QuickTilesPlugin.this::nextGroup);
+		}
+	};
+
 	@Provides
 	QuickTilesConfig provideConfig(ConfigManager configManager)
 	{
@@ -225,6 +246,7 @@ public class QuickTilesPlugin extends Plugin
 		{
 			sharing.addMenuOptions();
 		}
+		loadGroups();
 		if (config.sidebarPanel())
 		{
 			addPanel();
@@ -251,7 +273,7 @@ public class QuickTilesPlugin extends Plugin
 
 	private KeyListener[] listeners()
 	{
-		return new KeyListener[]{markListener, colourListener, toggleListener, undoListener, redoListener};
+		return new KeyListener[]{markListener, colourListener, toggleListener, undoListener, redoListener, groupListener};
 	}
 
 	@Subscribe
@@ -261,6 +283,7 @@ public class QuickTilesPlugin extends Plugin
 		{
 			store.clearCache();
 			history.clear();
+			loadGroups();
 			loadTiles();
 		});
 	}
@@ -381,7 +404,30 @@ public class QuickTilesPlugin extends Plugin
 			.setType(MenuAction.RUNELITE)
 			.onClick(e -> promptNote(existing));
 
-		MenuEntry colourEntry = menu.createMenuEntry(-4)
+		MenuEntry groupEntry = menu.createMenuEntry(-4)
+			.setOption("Group")
+			.setTarget(ColorUtil.wrapWithColorTag("Tile", colourOf(existing)))
+			.setType(MenuAction.RUNELITE);
+		Menu groupMenu = groupEntry.createSubMenu();
+		groupMenu.createMenuEntry(0)
+			.setOption("New group...")
+			.setType(MenuAction.RUNELITE)
+			.onClick(e -> promptNewGroup(existing));
+		List<String> names = new ArrayList<>(groups.names());
+		Collections.reverse(names);
+		for (String name : names)
+		{
+			groupMenu.createMenuEntry(0)
+				.setOption(name.equalsIgnoreCase(String.valueOf(existing.getGroup())) ? name + " (now)" : name)
+				.setType(MenuAction.RUNELITE)
+				.onClick(e -> setTileGroup(existing, name));
+		}
+		groupMenu.createMenuEntry(0)
+			.setOption(TileGroups.UNGROUPED)
+			.setType(MenuAction.RUNELITE)
+			.onClick(e -> setTileGroup(existing, null));
+
+		MenuEntry colourEntry = menu.createMenuEntry(-5)
 			.setOption("Colour")
 			.setTarget(ColorUtil.wrapWithColorTag("Tile", colourOf(existing)))
 			.setType(MenuAction.RUNELITE);
@@ -451,9 +497,12 @@ public class QuickTilesPlugin extends Plugin
 		}
 	}
 
-	private static TilePoint newTile(WorldPoint point)
+	/**
+	 * A tile to add at a point, in the group new tiles go into.
+	 */
+	private TilePoint newTile(WorldPoint point)
 	{
-		return TilePoint.of(point, null);
+		return TilePoint.of(point, null).withGroup(activeGroup);
 	}
 
 	private void toggleTile(WorldPoint point)
@@ -509,6 +558,26 @@ public class QuickTilesPlugin extends Plugin
 				updateTile(existing, t -> t.withNote(note));
 			}))
 			.build();
+	}
+
+	private void promptNewGroup(TilePoint existing)
+	{
+		chatboxPanelManager.openTextInput("New group name")
+			.onDone((String input) -> clientThread.invoke(() ->
+			{
+				String name = addGroup(input);
+				if (name != null)
+				{
+					setTileGroup(existing, name);
+				}
+			}))
+			.build();
+	}
+
+	private void setTileGroup(TilePoint existing, @Nullable String group)
+	{
+		updateTile(existing, t -> t.withGroup(group));
+		refreshPanel();
 	}
 
 	/**
@@ -577,6 +646,238 @@ public class QuickTilesPlugin extends Plugin
 
 
 
+	// ---- groups ----
+
+	private void loadGroups()
+	{
+		TileGroups.Saved saved = null;
+		String json = configManager.getConfiguration(QuickTilesConfig.GROUP, QuickTilesConfig.GROUPS_KEY);
+		if (json != null && !json.isEmpty())
+		{
+			try
+			{
+				saved = gson.fromJson(json, TileGroups.Saved.class);
+			}
+			catch (JsonParseException | IllegalStateException e)
+			{
+				saved = null;
+			}
+		}
+		groups.load(saved);
+		String active = configManager.getConfiguration(QuickTilesConfig.GROUP, QuickTilesConfig.ACTIVE_GROUP_KEY);
+		activeGroup = active == null || active.isEmpty() || !groups.exists(active) ? null : active;
+		refreshPanel();
+	}
+
+	private void saveGroups()
+	{
+		configManager.setConfiguration(QuickTilesConfig.GROUP, QuickTilesConfig.GROUPS_KEY, gson.toJson(groups.export()));
+	}
+
+	void setActiveGroup(@Nullable String group)
+	{
+		activeGroup = group;
+		if (group == null)
+		{
+			configManager.unsetConfiguration(QuickTilesConfig.GROUP, QuickTilesConfig.ACTIVE_GROUP_KEY);
+		}
+		else
+		{
+			configManager.setConfiguration(QuickTilesConfig.GROUP, QuickTilesConfig.ACTIVE_GROUP_KEY, group);
+		}
+		refreshPanel();
+	}
+
+	private void nextGroup()
+	{
+		if (groups.names().isEmpty())
+		{
+			chat("Quick Tiles: you have no groups yet. Make one in the Quick Tiles sidebar.");
+			return;
+		}
+		setActiveGroup(groups.next(activeGroup));
+		chat("Quick Tiles: new tiles go into " + TileGroups.display(activeGroup) + ".");
+	}
+
+	/**
+	 * @return the group's name as saved, or null if the name was empty or taken
+	 */
+	@Nullable
+	String addGroup(String name)
+	{
+		String added = groups.add(name);
+		if (added == null)
+		{
+			chat("Quick Tiles: that group name is empty or already taken.");
+			return null;
+		}
+		saveGroups();
+		refreshPanel();
+		return added;
+	}
+
+	void renameGroup(String from, String to)
+	{
+		String renamed = groups.rename(from, to);
+		if (renamed == null)
+		{
+			chat("Quick Tiles: that group name is empty or already taken.");
+			return;
+		}
+		rewriteGroup(from, renamed);
+		if (from.equalsIgnoreCase(String.valueOf(activeGroup)))
+		{
+			setActiveGroup(renamed);
+		}
+		saveGroups();
+		loadTiles();
+		refreshPanel();
+	}
+
+	/**
+	 * @param deleteTiles delete the group's tiles too, rather than keeping them ungrouped
+	 */
+	void deleteGroup(String name, boolean deleteTiles)
+	{
+		history.begin();
+		for (int region : store.allRegions())
+		{
+			List<TilePoint> tiles = store.get(region);
+			List<TilePoint> updated = new ArrayList<>();
+			boolean changed = false;
+			for (TilePoint t : tiles)
+			{
+				if (name.equalsIgnoreCase(String.valueOf(t.getGroup())))
+				{
+					changed = true;
+					if (!deleteTiles)
+					{
+						updated.add(t.withGroup(null));
+					}
+				}
+				else
+				{
+					updated.add(t);
+				}
+			}
+			if (changed)
+			{
+				history.touch(region, tiles);
+				store.save(region, updated);
+			}
+		}
+		history.end(regions);
+		groups.remove(name);
+		if (name.equalsIgnoreCase(String.valueOf(activeGroup)))
+		{
+			setActiveGroup(null);
+		}
+		saveGroups();
+		loadTiles();
+		refreshPanel();
+	}
+
+	/**
+	 * Imported tiles that name a group bring that group with them.
+	 */
+	void ensureGroups(List<TilePoint> tiles)
+	{
+		boolean added = false;
+		for (TilePoint t : tiles)
+		{
+			if (t.getGroup() != null && !groups.exists(t.getGroup()))
+			{
+				added |= groups.add(t.getGroup()) != null;
+			}
+		}
+		if (added)
+		{
+			saveGroups();
+			refreshPanel();
+		}
+	}
+
+	void setGroupHidden(@Nullable String name, boolean hidden)
+	{
+		groups.setHidden(name, hidden);
+		saveGroups();
+		loadTiles();
+		refreshPanel();
+	}
+
+	/**
+	 * Every saved tile in a group (null for ungrouped).
+	 */
+	List<TilePoint> groupTiles(@Nullable String name)
+	{
+		List<TilePoint> out = new ArrayList<>();
+		for (int region : store.allRegions())
+		{
+			for (TilePoint t : store.get(region))
+			{
+				if (TileGroups.key(groups.groupOf(t)).equals(TileGroups.key(name)))
+				{
+					out.add(t);
+				}
+			}
+		}
+		return out;
+	}
+
+	private void rewriteGroup(String from, String to)
+	{
+		for (int region : store.allRegions())
+		{
+			List<TilePoint> tiles = store.get(region);
+			boolean changed = false;
+			for (int i = 0; i < tiles.size(); i++)
+			{
+				if (from.equalsIgnoreCase(String.valueOf(tiles.get(i).getGroup())))
+				{
+					tiles.set(i, tiles.get(i).withGroup(to));
+					changed = true;
+				}
+			}
+			if (changed)
+			{
+				store.save(region, tiles);
+			}
+		}
+	}
+
+	/**
+	 * Tile counts per group (key "" for ungrouped): [all saved tiles, tiles around you].
+	 */
+	Map<String, int[]> groupCounts()
+	{
+		Set<Integer> nearby = new HashSet<>();
+		WorldView top = client.getTopLevelWorldView();
+		int[] loaded = top == null ? null : top.getMapRegions();
+		if (loaded != null)
+		{
+			for (int r : loaded)
+			{
+				nearby.add(r);
+			}
+		}
+		Map<String, int[]> counts = new HashMap<>();
+		for (int region : store.allRegions())
+		{
+			for (TilePoint t : store.get(region))
+			{
+				int[] c = counts.computeIfAbsent(TileGroups.key(groups.groupOf(t)), k -> new int[2]);
+				c[0]++;
+				if (nearby.contains(region))
+				{
+					c[1]++;
+				}
+			}
+		}
+		return counts;
+	}
+
+	// ---- panel ----
+
 	private void addPanel()
 	{
 		panel = new QuickTilesPanel(this, config, configManager);
@@ -619,6 +920,15 @@ public class QuickTilesPlugin extends Plugin
 				state.colours.add(colour(i));
 			}
 			state.brush = brushIndex();
+			state.groups = new ArrayList<>(groups.names());
+			state.hidden = new HashMap<>();
+			for (String name : state.groups)
+			{
+				state.hidden.put(TileGroups.key(name), groups.isHidden(name));
+			}
+			state.hidden.put(TileGroups.key(null), groups.isHidden(null));
+			state.counts = groupCounts();
+			state.activeGroup = activeGroup;
 			state.canUndo = history.canUndo();
 			state.canRedo = history.canRedo();
 			SwingUtilities.invokeLater(() -> p.update(state));
@@ -683,6 +993,10 @@ public class QuickTilesPlugin extends Plugin
 		{
 			for (TilePoint saved : store.get(region))
 			{
+				if (groups.isHidden(groups.groupOf(saved)))
+				{
+					continue;
+				}
 				for (WorldPoint local : WorldPoint.toLocalInstance(wv, saved.toWorldPoint()))
 				{
 					tiles.add(new MarkedTile(local, saved.getColor(), saved.getLabel(), saved.getNote()));
@@ -763,6 +1077,7 @@ public class QuickTilesPlugin extends Plugin
 		return new String[][]{
 			{"markHotkey", "Mark / paint"},
 			{"colourHotkey", "Next colour"},
+			{"groupHotkey", "Next group"},
 			{"undoHotkey", "Undo"},
 			{"redoHotkey", "Redo"},
 			{"toggleHotkey", "Show / hide"},
@@ -777,6 +1092,8 @@ public class QuickTilesPlugin extends Plugin
 				return config.markHotkey();
 			case "colourHotkey":
 				return config.colourHotkey();
+			case "groupHotkey":
+				return config.groupHotkey();
 			case "undoHotkey":
 				return config.undoHotkey();
 			case "redoHotkey":

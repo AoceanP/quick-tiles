@@ -41,6 +41,8 @@ public interface QuickTilesConfig extends Config
 	String GROUP = "quicktiles";
 	String BRUSH_KEY = "brush";
 	String ORB_OPTIONS_KEY = "orbOptions";
+	String GROUPS_KEY = "groups";
+	String ACTIVE_GROUP_KEY = "activeGroup";
 	String PANEL_KEY = "sidebarPanel";
 
 	enum MenuMode
@@ -192,9 +194,21 @@ public interface QuickTilesConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "groupHotkey",
+		name = "Next group hotkey",
+		description = "Switches which group new tiles go into.",
+		position = 9,
+		section = markingSection
+	)
+	default Keybind groupHotkey()
+	{
+		return new Keybind(KeyEvent.VK_G, InputEvent.CTRL_DOWN_MASK);
+	}
+
+	@ConfigItem(
 		keyName = PANEL_KEY,
 		name = "Sidebar panel",
-		description = "Adds a Quick Tiles button to the sidebar, with your colours, undo, export and hotkeys.",
+		description = "Adds a Quick Tiles button to the sidebar, with your colours, groups, export and hotkeys.",
 		position = 10,
 		section = markingSection
 	)

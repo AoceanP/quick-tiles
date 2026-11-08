@@ -164,7 +164,7 @@ final class TileHistory
 	}
 
 	/**
-	 * Tiles compare as equal by position only, so colours, labels and notes are checked too.
+	 * Tiles compare as equal by position only, so colours, labels, groups and notes are checked too.
 	 */
 	private static boolean sameTiles(List<TilePoint> a, List<TilePoint> b)
 	{
@@ -178,6 +178,7 @@ final class TileHistory
 			TilePoint y = b.get(i);
 			if (!x.equals(y) || !java.util.Objects.equals(x.getColor(), y.getColor())
 				|| !java.util.Objects.equals(x.getLabel(), y.getLabel())
+				|| !java.util.Objects.equals(x.getGroup(), y.getGroup())
 				|| !java.util.Objects.equals(x.getNote(), y.getNote()))
 			{
 				return false;

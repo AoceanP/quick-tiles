@@ -33,10 +33,11 @@ import net.runelite.api.coords.WorldPoint;
  * One saved tile. The field names match RuneLite's Ground Markers plugin, so exports from either
  * plugin (and shared tile packs) can be pasted into the other.
  * <p>
- * Two points are equal when they are the same tile; colour, label and note are ignored.
+ * Two points are equal when they are the same tile; colour, label, group and note are ignored.
  * <p>
- * The note is Quick Tiles' own addition. Ground Markers ignores fields it doesn't know, so exports
- * still paste into it, and tiles without one (older saves, Ground Markers, tile packs) have no note.
+ * The group and note are Quick Tiles' own additions. Ground Markers ignores fields it doesn't know,
+ * so exports still paste into it, and tiles without them (older saves, Ground Markers, tile packs)
+ * are simply ungrouped with no note.
  */
 final class TilePoint
 {
@@ -49,6 +50,8 @@ final class TilePoint
 	@Nullable
 	private String label;
 	@Nullable
+	private String group;
+	@Nullable
 	private String note;
 
 	// For Gson.
@@ -58,11 +61,11 @@ final class TilePoint
 
 	TilePoint(int regionId, int regionX, int regionY, int z, @Nullable Color color, @Nullable String label)
 	{
-		this(regionId, regionX, regionY, z, color, label, null);
+		this(regionId, regionX, regionY, z, color, label, null, null);
 	}
 
 	TilePoint(int regionId, int regionX, int regionY, int z, @Nullable Color color, @Nullable String label,
-		@Nullable String note)
+		@Nullable String group, @Nullable String note)
 	{
 		this.regionId = regionId;
 		this.regionX = regionX;
@@ -70,6 +73,7 @@ final class TilePoint
 		this.z = z;
 		this.color = color;
 		this.label = label;
+		this.group = group;
 		this.note = note;
 	}
 
@@ -101,6 +105,15 @@ final class TilePoint
 	}
 
 	/**
+	 * The group the tile belongs to, or null when it isn't in one.
+	 */
+	@Nullable
+	String getGroup()
+	{
+		return group;
+	}
+
+	/**
 	 * A longer note, shown when the mouse is over the tile.
 	 */
 	@Nullable
@@ -111,17 +124,22 @@ final class TilePoint
 
 	TilePoint withColor(@Nullable Color newColor)
 	{
-		return new TilePoint(regionId, regionX, regionY, z, newColor, label, note);
+		return new TilePoint(regionId, regionX, regionY, z, newColor, label, group, note);
 	}
 
 	TilePoint withLabel(@Nullable String newLabel)
 	{
-		return new TilePoint(regionId, regionX, regionY, z, color, newLabel, note);
+		return new TilePoint(regionId, regionX, regionY, z, color, newLabel, group, note);
+	}
+
+	TilePoint withGroup(@Nullable String newGroup)
+	{
+		return new TilePoint(regionId, regionX, regionY, z, color, label, newGroup, note);
 	}
 
 	TilePoint withNote(@Nullable String newNote)
 	{
-		return new TilePoint(regionId, regionX, regionY, z, color, label, newNote);
+		return new TilePoint(regionId, regionX, regionY, z, color, label, group, newNote);
 	}
 
 	/**

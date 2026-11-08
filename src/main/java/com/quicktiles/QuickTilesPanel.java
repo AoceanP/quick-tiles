@@ -38,14 +38,20 @@ import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import javax.annotation.Nullable;
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
 import javax.swing.Icon;
 import javax.swing.JLabel;
 import javax.swing.JMenu;
+import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
 import javax.swing.SwingConstants;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.config.Keybind;
@@ -54,7 +60,7 @@ import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.PluginPanel;
 
 /**
- * The Quick Tiles sidebar: colours, undo, export and import, and every hotkey with a
+ * The Quick Tiles sidebar: colours, groups, undo, export and import, and every hotkey with a
  * Change button. Everything here can also be done in game or in the settings; this is the
  * quick way.
  */
@@ -73,6 +79,11 @@ class QuickTilesPanel extends PluginPanel
 	{
 		final List<Color> colours = new ArrayList<>();
 		int brush;
+		List<String> groups = Collections.emptyList();
+		Map<String, Boolean> hidden = new HashMap<>();
+		Map<String, int[]> counts = new HashMap<>();
+		@Nullable
+		String activeGroup;
 		boolean canUndo;
 		boolean canRedo;
 	}
@@ -114,6 +125,8 @@ class QuickTilesPanel extends PluginPanel
 		content.add(title());
 		content.add(gap(8));
 		content.add(colourCard());
+		content.add(gap(8));
+		content.add(groupCard());
 		content.add(gap(8));
 		content.add(toolRow());
 		content.add(gap(8));
@@ -161,6 +174,119 @@ class QuickTilesPanel extends PluginPanel
 		return card;
 	}
 
+	private JPanel groupCard()
+	{
+		JPanel card = card();
+		JPanel head = new JPanel(new BorderLayout());
+		head.setOpaque(false);
+		head.add(label("Groups", Color.WHITE, true), BorderLayout.WEST);
+		JLabel add = link("+ New group", () ->
+		{
+			String name = JOptionPane.showInputDialog(this, "Name for the new group:", "New group", JOptionPane.PLAIN_MESSAGE);
+			if (name != null)
+			{
+				plugin.getClientThread().invoke(() -> plugin.addGroup(name));
+			}
+		});
+		head.add(add, BorderLayout.EAST);
+		card.add(fullWidth(head));
+		card.add(gap(4));
+		JLabel into = label("New tiles go into: " + TileGroups.display(state.activeGroup), MUTED, false);
+		into.setToolTipText("Click a group's name to put new tiles in it. " + keyText(config.groupHotkey()) + " switches too.");
+		card.add(fullWidth(row(into)));
+		card.add(gap(4));
+
+		card.add(groupRow(null));
+		for (String name : state.groups)
+		{
+			card.add(gap(2));
+			card.add(groupRow(name));
+		}
+		if (state.groups.isEmpty())
+		{
+			card.add(gap(4));
+			card.add(fullWidth(row(label("Make groups for bosses or areas, then show or hide each one.", SUBTLE, false))));
+		}
+		return card;
+	}
+
+	private JPanel groupRow(@Nullable String name)
+	{
+		boolean hidden = Boolean.TRUE.equals(state.hidden.get(TileGroups.key(name)));
+		boolean active = TileGroups.key(name).equals(TileGroups.key(state.activeGroup));
+		int[] count = state.counts.getOrDefault(TileGroups.key(name), new int[2]);
+
+		JPanel row = new JPanel(new BorderLayout(6, 0));
+		row.setBackground(ROW);
+		row.setBorder(BorderFactory.createEmptyBorder(4, 6, 4, 6));
+
+		JLabel eye = new JLabel(new Eye(!hidden));
+		eye.setToolTipText(hidden ? "Hidden. Click to show." : "Shown. Click to hide.");
+		eye.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		eye.addMouseListener(new MouseAdapter()
+		{
+			@Override
+			public void mouseClicked(MouseEvent e)
+			{
+				plugin.getClientThread().invoke(() -> plugin.setGroupHidden(name, !hidden));
+			}
+		});
+		row.add(eye, BorderLayout.WEST);
+
+		JLabel title = label(TileGroups.display(name), hidden ? SUBTLE : (active ? GOLD : Color.WHITE), active);
+		title.setToolTipText(active ? "New tiles go into this group" : "Click to put new tiles in this group");
+		title.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		title.addMouseListener(new MouseAdapter()
+		{
+			@Override
+			public void mouseClicked(MouseEvent e)
+			{
+				if (e.getButton() == MouseEvent.BUTTON1)
+				{
+					plugin.getClientThread().invoke(() -> plugin.setActiveGroup(name));
+				}
+			}
+		});
+		row.add(title, BorderLayout.CENTER);
+
+		JLabel tiles = label(count[1] > 0 ? count[0] + " (" + count[1] + " here)" : String.valueOf(count[0]), MUTED, false);
+		tiles.setToolTipText(count[0] + " tiles in all, " + count[1] + " around you right now");
+		row.add(tiles, BorderLayout.EAST);
+
+		JPopupMenu menu = new JPopupMenu();
+		menu.add(item("Put new tiles here", () -> plugin.getClientThread().invoke(() -> plugin.setActiveGroup(name))));
+		menu.add(item("Export these tiles", () -> plugin.getClientThread().invoke(() ->
+			plugin.getSharing().copy(plugin.groupTiles(name), "in " + TileGroups.display(name)))));
+		if (name != null)
+		{
+			menu.addSeparator();
+			menu.add(item("Rename...", () ->
+			{
+				Object input = JOptionPane.showInputDialog(this, "New name for " + name + ":", "Rename group",
+					JOptionPane.PLAIN_MESSAGE, null, null, name);
+				if (input != null)
+				{
+					plugin.getClientThread().invoke(() -> plugin.renameGroup(name, input.toString()));
+				}
+			}));
+			menu.add(item("Delete group, keep its tiles", () ->
+				plugin.getClientThread().invoke(() -> plugin.deleteGroup(name, false))));
+			menu.add(item("Delete group and its tiles...", () ->
+			{
+				int answer = JOptionPane.showConfirmDialog(this, "Delete " + name + " and its " + count[0] + " tiles?"
+					+ "\nUndo can bring them back this session.", "Delete group", JOptionPane.YES_NO_OPTION);
+				if (answer == JOptionPane.YES_OPTION)
+				{
+					plugin.getClientThread().invoke(() -> plugin.deleteGroup(name, true));
+				}
+			}));
+		}
+		row.setComponentPopupMenu(menu);
+		title.setComponentPopupMenu(menu);
+		tiles.setComponentPopupMenu(menu);
+		return fullWidth(row);
+	}
+
 	private JPanel toolRow()
 	{
 		JPanel grid = new JPanel(new GridLayout(2, 2, 4, 4));
@@ -169,14 +295,32 @@ class QuickTilesPanel extends PluginPanel
 			() -> plugin.getClientThread().invoke(plugin::undo)));
 		grid.add(button("Redo", "Put back what you undid (" + keyText(config.redoHotkey()) + ")", state.canRedo,
 			() -> plugin.getClientThread().invoke(plugin::redo)));
-		grid.add(button("Export", "Copy the tiles around you, to paste into Quick Tiles or Ground Markers", true,
-			() -> plugin.getClientThread().invoke(() -> plugin.getSharing().exportTiles())));
+		JLabel[] export = new JLabel[1];
+		export[0] = button("Export...", "Copy tiles to paste elsewhere, or to share", true,
+			() -> exportMenu().show(export[0], 0, export[0].getHeight()));
+		grid.add(export[0]);
 		grid.add(button("Import", "Add tiles from your clipboard (Quick Tiles, Ground Markers or a tile pack)", true,
 			() -> plugin.getClientThread().invoke(() -> plugin.getSharing().promptImport())));
 		JPanel wrap = new JPanel(new BorderLayout(0, 4));
 		wrap.setOpaque(false);
 		wrap.add(grid, BorderLayout.NORTH);
 		return fullWidth(wrap);
+	}
+
+	private JPopupMenu exportMenu()
+	{
+		JPopupMenu menu = new JPopupMenu();
+		menu.add(item("Tiles around you", () -> plugin.getClientThread().invoke(() -> plugin.getSharing().exportTiles())));
+		JMenu group = new JMenu("A group");
+		group.add(item(TileGroups.UNGROUPED, () -> plugin.getClientThread().invoke(() ->
+			plugin.getSharing().copy(plugin.groupTiles(null), "ungrouped"))));
+		for (String name : state.groups)
+		{
+			group.add(item(name, () -> plugin.getClientThread().invoke(() ->
+				plugin.getSharing().copy(plugin.groupTiles(name), "in " + name))));
+		}
+		menu.add(group);
+		return menu;
 	}
 
 	private JPanel hotkeyCard()
@@ -309,7 +453,7 @@ class QuickTilesPanel extends PluginPanel
 	private JPanel hint()
 	{
 		JLabel text = label("<html><div style='width:165px'>Right-click a tile to mark it. Shift + right-click a "
-			+ "marked tile for its label, note and colour.</div></html>", SUBTLE, false);
+			+ "marked tile for its label, note, group and colour.</div></html>", SUBTLE, false);
 		return fullWidth(row(text));
 	}
 
@@ -446,6 +590,13 @@ class QuickTilesPanel extends PluginPanel
 			});
 		}
 		return button;
+	}
+
+	private static JMenuItem item(String text, Runnable action)
+	{
+		JMenuItem item = new JMenuItem(text);
+		item.addActionListener(e -> action.run());
+		return item;
 	}
 
 	/**

@@ -191,6 +191,7 @@ class TileSharing
 
 	private void importTiles(List<TilePoint> incoming, String source)
 	{
+		plugin.ensureGroups(incoming);
 		Map<Integer, List<TilePoint>> byRegion = new LinkedHashMap<>();
 		for (TilePoint point : incoming)
 		{
