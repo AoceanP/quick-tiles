@@ -32,6 +32,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.config.Keybind;
 import net.runelite.http.api.RuneLiteAPI;
 import static org.junit.Assert.assertEquals;
@@ -41,7 +42,7 @@ import static org.junit.Assert.assertTrue;
 import org.junit.Test;
 
 /**
- * Quick Tiles 1.1 and 1.1.1: groups, notes, undo and redo, 8 colours, Ctrl shortcuts.
+ * Quick Tiles 1.1: groups, notes, undo, area select, hotkeys.
  */
 public class Release11Test
 {
@@ -212,6 +213,30 @@ public class Release11Test
 		history.end(regions);
 	}
 
+	// ---- area select ----
+
+	@Test
+	public void areaCoversTheRectangle()
+	{
+		WorldPoint a = new WorldPoint(3200, 3200, 0);
+		WorldPoint b = new WorldPoint(3203, 3198, 0);
+		assertEquals(12, TileArea.size(a, b));
+		assertEquals(12, TileArea.tiles(a, b).size());
+		assertTrue(TileArea.tiles(a, b).contains(new WorldPoint(3201, 3199, 0)));
+		// The outline: everything but the 2 inside tiles.
+		assertEquals(10, TileArea.edge(a, b).size());
+		assertEquals(1, TileArea.tiles(a, a).size());
+	}
+
+	@Test
+	public void areasStayOnOneFloorAndAReasonableSize()
+	{
+		WorldPoint a = new WorldPoint(3200, 3200, 0);
+		assertFalse(TileArea.isValid(a, new WorldPoint(3201, 3201, 1)));
+		assertTrue(TileArea.isValid(a, a.dx(TileArea.MAX_SIDE - 1)));
+		assertFalse(TileArea.isValid(a, a.dx(TileArea.MAX_SIDE)));
+	}
+
 	// ---- groups ----
 
 	@Test
@@ -291,6 +316,8 @@ public class Release11Test
 		};
 		assertEquals(new Keybind(KeyEvent.VK_Z, InputEvent.CTRL_DOWN_MASK), config.undoHotkey());
 		assertEquals(new Keybind(KeyEvent.VK_Y, InputEvent.CTRL_DOWN_MASK), config.redoHotkey());
+		assertEquals(new Keybind(KeyEvent.VK_A, InputEvent.CTRL_DOWN_MASK), config.areaHotkey());
+		assertEquals(new Keybind(KeyEvent.VK_S, InputEvent.CTRL_DOWN_MASK), config.sightHotkey());
 		assertEquals(new Keybind(KeyEvent.VK_D, InputEvent.CTRL_DOWN_MASK), config.colourHotkey());
 		assertEquals(new Keybind(KeyEvent.VK_G, InputEvent.CTRL_DOWN_MASK), config.groupHotkey());
 		// 1.0's own keys are still unset until you pick them.
@@ -303,8 +330,7 @@ public class Release11Test
 	@Test
 	public void everyPanelHotkeyHasAName()
 	{
-		assertEquals(6, QuickTilesPlugin.hotkeys().length);
-		assertEquals(8, QuickTilesPlugin.COLOUR_COUNT);
+		assertEquals(8, QuickTilesPlugin.hotkeys().length);
 		assertEquals("Not set", QuickTilesPanel.keyText(Keybind.NOT_SET));
 	}
 }

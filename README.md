@@ -13,19 +13,28 @@ Mark tiles without digging through menus. Point at a tile and press a key, or ho
 
 Tip: pick a key you don't type in chat, like a function key or a mouse button bound to a key. While the hotkey is held, its letter won't reach the chatbox.
 
-## Shortcuts, groups and the sidebar
+## Ctrl shortcuts
 
-- **Ctrl+Z / Ctrl+Y** undo and redo your last mark or paint stroke. A whole stroke undoes in one go.
-- **Ctrl+D** switches to the next colour.
-- **Ctrl+G** switches which group new tiles go into.
-- Right-click works exactly as before.
+Point at a tile, then press:
+
+| Keys | Does |
+|---|---|
+| **Ctrl+Z / Ctrl+Y** | Undo / redo your last mark, paint stroke or area |
+| **Ctrl+A** | Area: press on one corner, then on the other corner to mark the whole rectangle. Starting on a tile of your current colour erases instead. Esc cancels. |
+| **Ctrl+S** | Line of sight: shades every tile with a clear line to that tile, using the game's own walls. It stays still until you press it on the same tile again, or click *Clear line of sight* in the sidebar. |
+| **Ctrl+D** | Next colour |
+| **Ctrl+G** | Next group for new tiles |
+
+Right-click works exactly as before. Change any key in the sidebar (click **Change**, press the new key) or in the plugin settings.
+
+## Groups and the sidebar
 
 Click the Quick Tiles button in the sidebar to see:
 
 - **Colour:** your 8 colours. Click one to mark in it.
 - **Groups:** put tiles in named groups, e.g. one per boss. Click the dot to show or hide a group, click its name to put new tiles in it, and right-click it to rename, export or delete it. Each group shows how many tiles it has, and how many are around you.
-- **Undo, Redo, Export and Import.** Export lets you pick: tiles around you, or one group.
-- **Hotkeys:** every hotkey, with a **Change** button: click it and press the key you want. Keys used by another action are flagged.
+- **Undo, Redo, Export and Import.** Export lets you pick: tiles around you, one group, or an area you choose with the area shortcut.
+- **Hotkeys:** every shortcut, with a **Change** button.
 
 Shift + right-click a marked tile to give it a label, a **note** (shown when you point at the tile), a group or a colour.
 

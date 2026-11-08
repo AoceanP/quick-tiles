@@ -57,6 +57,10 @@ class QuickTilesOverlay extends Overlay
 	 */
 	private static final double CORNER_FRACTION = 0.3;
 
+	private static final Color AREA_OUTLINE = new Color(255, 255, 255, 200);
+	private static final Color AREA_EXPORT_OUTLINE = new Color(0, 200, 255, 220);
+	private static final Color SIGHT_PIN = new Color(232, 89, 60);
+
 	private final Client client;
 	private final QuickTilesPlugin plugin;
 	private final QuickTilesConfig config;
@@ -83,6 +87,9 @@ class QuickTilesOverlay extends Overlay
 			return null;
 		}
 		graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+		// Line of sight and the area outline show even with tiles hidden: you asked for them.
+		drawSight(graphics);
+		drawArea(graphics);
 
 		Map<Integer, List<MarkedTile>> marked = plugin.getMarked();
 		if (!plugin.isTilesVisible() || marked.isEmpty())
@@ -140,6 +147,69 @@ class QuickTilesOverlay extends Overlay
 		return tile == null ? null : tile.getWorldLocation();
 	}
 
+	/**
+	 * The pinned tile and every tile with a clear line to it, worked out once when pinned.
+	 */
+	private void drawSight(Graphics2D graphics)
+	{
+		WorldPoint pin = plugin.getSightPin();
+		WorldView wv = pin == null ? null : client.getWorldView(plugin.getSightWorldView());
+		if (pin == null || wv == null || pin.getPlane() != wv.getPlane())
+		{
+			return;
+		}
+		Color colour = config.sightColour();
+		Stroke thin = new BasicStroke(1);
+		boolean fill = config.sightStyle() == QuickTilesConfig.SightStyle.FILL;
+		Color border = new Color(colour.getRed(), colour.getGreen(), colour.getBlue(), Math.min(255, colour.getAlpha() * 2 + 40));
+		for (WorldPoint point : plugin.getSightTiles())
+		{
+			LocalPoint lp = LocalPoint.fromWorld(wv, point);
+			Polygon poly = lp == null ? null : Perspective.getCanvasTilePoly(client, lp);
+			if (poly != null)
+			{
+				OverlayUtil.renderPolygon(graphics, poly, border, fill ? colour : new Color(0, 0, 0, 0), thin);
+			}
+		}
+		LocalPoint pinLocal = LocalPoint.fromWorld(wv, pin);
+		Polygon pinPoly = pinLocal == null ? null : Perspective.getCanvasTilePoly(client, pinLocal);
+		if (pinPoly != null)
+		{
+			OverlayUtil.renderPolygon(graphics, pinPoly, SIGHT_PIN, new Color(232, 89, 60, 60), new BasicStroke(2));
+		}
+	}
+
+	/**
+	 * While choosing the second corner, an outline of the area from the first corner to the mouse.
+	 */
+	private void drawArea(Graphics2D graphics)
+	{
+		WorldPoint start = plugin.getAreaStart();
+		WorldPoint end = start == null ? null : plugin.hoveredTile();
+		if (start == null)
+		{
+			return;
+		}
+		if (end == null || !TileArea.isValid(start, end))
+		{
+			end = start;
+		}
+		Color colour = plugin.isAreaExport() ? AREA_EXPORT_OUTLINE : AREA_OUTLINE;
+		Stroke stroke = new BasicStroke(1.5f);
+		WorldView wv = client.getTopLevelWorldView();
+		for (WorldPoint saved : TileArea.edge(start, end))
+		{
+			for (WorldPoint point : WorldPoint.toLocalInstance(wv, saved))
+			{
+				LocalPoint lp = LocalPoint.fromWorld(wv, point);
+				Polygon poly = lp == null ? null : Perspective.getCanvasTilePoly(client, lp);
+				if (poly != null)
+				{
+					OverlayUtil.renderPolygon(graphics, poly, colour, new Color(255, 255, 255, 25), stroke);
+				}
+			}
+		}
+	}
 
 	private void draw(Graphics2D graphics, WorldView wv, MarkedTile tile, Stroke stroke)
 	{

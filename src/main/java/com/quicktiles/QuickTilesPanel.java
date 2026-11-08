@@ -86,6 +86,7 @@ class QuickTilesPanel extends PluginPanel
 		String activeGroup;
 		boolean canUndo;
 		boolean canRedo;
+		boolean sightPinned;
 	}
 
 	private final QuickTilesPlugin plugin;
@@ -291,7 +292,7 @@ class QuickTilesPanel extends PluginPanel
 	{
 		JPanel grid = new JPanel(new GridLayout(2, 2, 4, 4));
 		grid.setOpaque(false);
-		grid.add(button("Undo", "Undo your last mark or paint stroke (" + keyText(config.undoHotkey()) + ")", state.canUndo,
+		grid.add(button("Undo", "Undo your last mark, stroke or area (" + keyText(config.undoHotkey()) + ")", state.canUndo,
 			() -> plugin.getClientThread().invoke(plugin::undo)));
 		grid.add(button("Redo", "Put back what you undid (" + keyText(config.redoHotkey()) + ")", state.canRedo,
 			() -> plugin.getClientThread().invoke(plugin::redo)));
@@ -304,6 +305,15 @@ class QuickTilesPanel extends PluginPanel
 		JPanel wrap = new JPanel(new BorderLayout(0, 4));
 		wrap.setOpaque(false);
 		wrap.add(grid, BorderLayout.NORTH);
+		if (state.sightPinned)
+		{
+			wrap.add(button("Clear line of sight", "Remove the line of sight shading (" + keyText(config.sightHotkey())
+				+ " on the pinned tile does it too)", true, () -> plugin.getClientThread().invoke(() ->
+			{
+				plugin.clearSight();
+				plugin.refreshPanel();
+			})), BorderLayout.SOUTH);
+		}
 		return fullWidth(wrap);
 	}
 
@@ -320,13 +330,15 @@ class QuickTilesPanel extends PluginPanel
 				plugin.getSharing().copy(plugin.groupTiles(name), "in " + name))));
 		}
 		menu.add(group);
+		menu.add(item("An area you pick (" + keyText(config.areaHotkey()) + " on two corners)",
+			() -> plugin.getClientThread().invoke(plugin::armAreaExport)));
 		return menu;
 	}
 
 	private JPanel hotkeyCard()
 	{
 		JPanel card = card();
-		card.add(header("Hotkeys", "Click Change to set one"));
+		card.add(header("Hotkeys", "Point at a tile, then press"));
 		for (String[] hotkey : QuickTilesPlugin.hotkeys())
 		{
 			card.add(gap(3));

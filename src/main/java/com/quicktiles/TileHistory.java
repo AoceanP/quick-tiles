@@ -33,7 +33,7 @@ import java.util.Map;
 import javax.annotation.Nullable;
 
 /**
- * Undo and redo for tile edits. Each edit (a click, or a whole paint stroke) remembers
+ * Undo and redo for tile edits. Each edit (a click, a whole paint stroke, an area fill) remembers
  * the affected regions' tiles before and after, so it can be put back exactly. Only this session's
  * edits are kept; nothing is saved.
  */

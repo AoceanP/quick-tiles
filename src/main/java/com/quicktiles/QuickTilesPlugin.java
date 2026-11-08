@@ -28,11 +28,13 @@ import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
 import com.google.inject.Provides;
 import java.awt.Color;
+import java.awt.event.KeyEvent;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -41,6 +43,8 @@ import javax.inject.Inject;
 import javax.swing.SwingUtilities;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
+import net.runelite.api.CollisionData;
+import net.runelite.api.CollisionDataFlag;
 import net.runelite.api.GameState;
 import net.runelite.api.KeyCode;
 import net.runelite.api.Menu;
@@ -50,6 +54,7 @@ import net.runelite.api.Player;
 import net.runelite.api.Tile;
 import net.runelite.api.WorldEntity;
 import net.runelite.api.WorldView;
+import net.runelite.api.coords.WorldArea;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.ClientTick;
 import net.runelite.api.events.MenuEntryAdded;
@@ -161,6 +166,18 @@ public class QuickTilesPlugin extends Plugin
 	@Nullable
 	private String activeGroup;
 
+	// Area select: the first corner, waiting for the second. Saved coordinates, like tiles.
+	@Nullable
+	private WorldPoint areaStart;
+	// The next area is copied to the clipboard instead of being marked.
+	private boolean areaExport;
+
+	// Line of sight: the pinned tile and the tiles with a clear line to it, in scene coordinates.
+	@Nullable
+	private WorldPoint sightPin;
+	private int sightWorldView = -1;
+	private Set<WorldPoint> sightTiles = Collections.emptySet();
+
 	@Nullable
 	private QuickTilesPanel panel;
 	@Nullable
@@ -199,6 +216,24 @@ public class QuickTilesPlugin extends Plugin
 		}
 	};
 
+	private final HotkeyListener areaListener = new HotkeyListener(() -> config.areaHotkey())
+	{
+		@Override
+		public void hotkeyPressed()
+		{
+			clientThread.invoke(QuickTilesPlugin.this::areaCorner);
+		}
+	};
+
+	private final HotkeyListener sightListener = new HotkeyListener(() -> config.sightHotkey())
+	{
+		@Override
+		public void hotkeyPressed()
+		{
+			clientThread.invoke(QuickTilesPlugin.this::toggleSight);
+		}
+	};
+
 	private final HotkeyListener undoListener = new HotkeyListener(() -> config.undoHotkey())
 	{
 		@Override
@@ -223,6 +258,29 @@ public class QuickTilesPlugin extends Plugin
 		public void hotkeyPressed()
 		{
 			clientThread.invoke(QuickTilesPlugin.this::nextGroup);
+		}
+	};
+
+	// Esc cancels an area in progress. The key still reaches the game.
+	private final KeyListener escListener = new KeyListener()
+	{
+		@Override
+		public void keyTyped(KeyEvent e)
+		{
+		}
+
+		@Override
+		public void keyPressed(KeyEvent e)
+		{
+			if (e.getKeyCode() == KeyEvent.VK_ESCAPE && areaStart != null)
+			{
+				clientThread.invoke(QuickTilesPlugin.this::cancelArea);
+			}
+		}
+
+		@Override
+		public void keyReleased(KeyEvent e)
+		{
 		}
 	};
 
@@ -266,6 +324,9 @@ public class QuickTilesPlugin extends Plugin
 		sharing.removeMenuOptions();
 		removePanel();
 		stroking = false;
+		areaStart = null;
+		areaExport = false;
+		clearSight();
 		history.clear();
 		marked.clear();
 		store.clearCache();
@@ -273,7 +334,8 @@ public class QuickTilesPlugin extends Plugin
 
 	private KeyListener[] listeners()
 	{
-		return new KeyListener[]{markListener, colourListener, toggleListener, undoListener, redoListener, groupListener};
+		return new KeyListener[]{markListener, colourListener, toggleListener, areaListener, sightListener,
+			undoListener, redoListener, groupListener, escListener};
 	}
 
 	@Subscribe
@@ -298,6 +360,10 @@ public class QuickTilesPlugin extends Plugin
 	public void onWorldViewUnloaded(WorldViewUnloaded event)
 	{
 		marked.remove(event.getWorldView().getId());
+		if (event.getWorldView().getId() == sightWorldView)
+		{
+			clearSight();
+		}
 	}
 
 	@Subscribe
@@ -332,6 +398,10 @@ public class QuickTilesPlugin extends Plugin
 			{
 				addPanel();
 			}
+		}
+		else if (key.startsWith("sight"))
+		{
+			clientThread.invoke(this::recomputeSight);
 		}
 		else
 		{
@@ -644,7 +714,211 @@ public class QuickTilesPlugin extends Plugin
 		refreshPanel();
 	}
 
+	// ---- area select ----
 
+	private void areaCorner()
+	{
+		if (client.getGameState() != GameState.LOGGED_IN)
+		{
+			return;
+		}
+		WorldPoint point = hoveredTile();
+		if (point == null)
+		{
+			return;
+		}
+		if (areaStart == null)
+		{
+			areaStart = point;
+			chat("Quick Tiles: " + (areaExport ? "exporting an area. " : "") + "Point at the other corner and press "
+				+ config.areaHotkey() + " again. Esc cancels.");
+			return;
+		}
+		WorldPoint start = areaStart;
+		areaStart = null;
+		if (!TileArea.isValid(start, point))
+		{
+			chat(start.getPlane() != point.getPlane() ? "Quick Tiles: both corners need to be on the same floor."
+				: "Quick Tiles: that area is too big. Each side can be up to " + TileArea.MAX_SIDE + " tiles.");
+			areaExport = false;
+			return;
+		}
+		if (areaExport)
+		{
+			areaExport = false;
+			exportArea(start, point);
+			return;
+		}
+		fillArea(start, point);
+	}
+
+	private void fillArea(WorldPoint start, WorldPoint end)
+	{
+		Color brush = brushColour();
+		TilePoint startTile = TilePoint.of(start, null);
+		List<TilePoint> startRegion = store.get(startTile.getRegionId());
+		int index = startRegion.indexOf(startTile);
+		TileEdits.Mode mode = TileEdits.modeFor(index >= 0 ? startRegion.get(index) : null, brush);
+
+		Map<Integer, List<TilePoint>> byRegion = new LinkedHashMap<>();
+		int changed = 0;
+		history.begin();
+		for (WorldPoint point : TileArea.tiles(start, end))
+		{
+			TilePoint target = newTile(point);
+			List<TilePoint> tiles = byRegion.computeIfAbsent(target.getRegionId(), r ->
+			{
+				List<TilePoint> current = store.get(r);
+				history.touch(r, current);
+				return current;
+			});
+			if (TileEdits.apply(tiles, target, mode, brush))
+			{
+				changed++;
+			}
+		}
+		byRegion.forEach(store::save);
+		history.end(regions);
+		loadTiles();
+		refreshPanel();
+		chat("Quick Tiles: " + (mode == TileEdits.Mode.ERASE ? "erased " : "marked ") + TileSharing.count(changed) + ".");
+	}
+
+	private void exportArea(WorldPoint start, WorldPoint end)
+	{
+		Set<TilePoint> wanted = new HashSet<>();
+		for (WorldPoint point : TileArea.tiles(start, end))
+		{
+			wanted.add(TilePoint.of(point, null));
+		}
+		List<TilePoint> found = new ArrayList<>();
+		Set<Integer> seen = new HashSet<>();
+		for (TilePoint t : wanted)
+		{
+			if (seen.add(t.getRegionId()))
+			{
+				for (TilePoint saved : store.get(t.getRegionId()))
+				{
+					if (wanted.contains(saved))
+					{
+						found.add(saved);
+					}
+				}
+			}
+		}
+		sharing.copy(found, "in that area");
+	}
+
+	private void cancelArea()
+	{
+		if (areaStart != null)
+		{
+			areaStart = null;
+			areaExport = false;
+			chat("Quick Tiles: area cancelled.");
+		}
+	}
+
+	/**
+	 * The next area is copied to the clipboard instead of marked.
+	 */
+	void armAreaExport()
+	{
+		areaExport = true;
+		areaStart = null;
+		chat("Quick Tiles: point at one corner of the area to export and press " + config.areaHotkey()
+			+ ", then the other corner.");
+	}
+
+	// ---- line of sight ----
+
+	private void toggleSight()
+	{
+		Player player = client.getLocalPlayer();
+		WorldView wv = player == null ? null : player.getWorldView();
+		Tile tile = wv == null || client.isMenuOpen() ? null : wv.getSelectedSceneTile();
+		if (tile == null)
+		{
+			return;
+		}
+		WorldPoint point = tile.getWorldLocation();
+		if (point.equals(sightPin) && wv.getId() == sightWorldView)
+		{
+			clearSight();
+			refreshPanel();
+			return;
+		}
+		sightPin = point;
+		sightWorldView = wv.getId();
+		recomputeSight();
+		refreshPanel();
+	}
+
+	/**
+	 * Works out which tiles have a clear line to the pinned tile, once. It doesn't follow the
+	 * mouse or the player, so the shading stays still.
+	 */
+	private void recomputeSight()
+	{
+		WorldPoint pin = sightPin;
+		WorldView wv = pin == null ? null : client.getWorldView(sightWorldView);
+		if (pin == null || wv == null)
+		{
+			sightTiles = Collections.emptySet();
+			return;
+		}
+		int range = config.sightRange();
+		WorldArea from = new WorldArea(pin, 1, 1);
+		CollisionData[] maps = wv.getCollisionMaps();
+		int[][] flags = maps == null || pin.getPlane() >= maps.length || maps[pin.getPlane()] == null
+			? null : maps[pin.getPlane()].getFlags();
+		Set<WorldPoint> seen = new HashSet<>();
+		for (int dx = -range; dx <= range; dx++)
+		{
+			for (int dy = -range; dy <= range; dy++)
+			{
+				if (dx == 0 && dy == 0)
+				{
+					continue;
+				}
+				WorldPoint to = pin.dx(dx).dy(dy);
+				if (isSolid(wv, flags, to))
+				{
+					continue;
+				}
+				if (from.hasLineOfSightTo(wv, to))
+				{
+					seen.add(to);
+				}
+			}
+		}
+		sightTiles = seen;
+	}
+
+	/**
+	 * Walls and objects you can't stand on aren't shaded.
+	 */
+	private static boolean isSolid(WorldView wv, @Nullable int[][] flags, WorldPoint point)
+	{
+		if (flags == null)
+		{
+			return false;
+		}
+		int x = point.getX() - wv.getBaseX();
+		int y = point.getY() - wv.getBaseY();
+		if (x < 0 || y < 0 || x >= flags.length || y >= flags[x].length)
+		{
+			return true;
+		}
+		return (flags[x][y] & CollisionDataFlag.BLOCK_MOVEMENT_FULL) != 0;
+	}
+
+	void clearSight()
+	{
+		sightPin = null;
+		sightWorldView = -1;
+		sightTiles = Collections.emptySet();
+	}
 
 	// ---- groups ----
 
@@ -931,6 +1205,7 @@ public class QuickTilesPlugin extends Plugin
 			state.activeGroup = activeGroup;
 			state.canUndo = history.canUndo();
 			state.canRedo = history.canRedo();
+			state.sightPinned = sightPin != null;
 			SwingUtilities.invokeLater(() -> p.update(state));
 		});
 	}
@@ -1018,6 +1293,33 @@ public class QuickTilesPlugin extends Plugin
 		return tilesVisible;
 	}
 
+	@Nullable
+	WorldPoint getAreaStart()
+	{
+		return areaStart;
+	}
+
+	boolean isAreaExport()
+	{
+		return areaExport;
+	}
+
+	@Nullable
+	WorldPoint getSightPin()
+	{
+		return sightPin;
+	}
+
+	int getSightWorldView()
+	{
+		return sightWorldView;
+	}
+
+	Set<WorldPoint> getSightTiles()
+	{
+		return sightTiles;
+	}
+
 	TileSharing getSharing()
 	{
 		return sharing;
@@ -1076,6 +1378,8 @@ public class QuickTilesPlugin extends Plugin
 	{
 		return new String[][]{
 			{"markHotkey", "Mark / paint"},
+			{"areaHotkey", "Area"},
+			{"sightHotkey", "Line of sight"},
 			{"colourHotkey", "Next colour"},
 			{"groupHotkey", "Next group"},
 			{"undoHotkey", "Undo"},
@@ -1090,6 +1394,10 @@ public class QuickTilesPlugin extends Plugin
 		{
 			case "markHotkey":
 				return config.markHotkey();
+			case "areaHotkey":
+				return config.areaHotkey();
+			case "sightHotkey":
+				return config.sightHotkey();
 			case "colourHotkey":
 				return config.colourHotkey();
 			case "groupHotkey":

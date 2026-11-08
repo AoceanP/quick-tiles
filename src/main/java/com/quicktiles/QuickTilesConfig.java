@@ -106,6 +106,31 @@ public interface QuickTilesConfig extends Config
 	)
 	String appearanceSection = "appearance";
 
+	@ConfigSection(
+		name = "Line of sight",
+		description = "Pin a tile with the line of sight shortcut to see which tiles have a clear line to it",
+		position = 3
+	)
+	String sightSection = "sight";
+
+	enum SightStyle
+	{
+		FILL("Light fill"),
+		OUTLINE("Outline only");
+
+		private final String name;
+
+		SightStyle(String name)
+		{
+			this.name = name;
+		}
+
+		@Override
+		public String toString()
+		{
+			return name;
+		}
+	}
 
 	@ConfigItem(
 		keyName = "markHotkey",
@@ -167,6 +192,32 @@ public interface QuickTilesConfig extends Config
 	default boolean orbOptions()
 	{
 		return true;
+	}
+
+	@ConfigItem(
+		keyName = "areaHotkey",
+		name = "Area hotkey",
+		description = "Point at one corner and press this, then point at the other corner and press it again to mark "
+			+ "the whole rectangle.<br>Starting on a tile that already has your current colour erases instead. Esc cancels.",
+		position = 5,
+		section = markingSection
+	)
+	default Keybind areaHotkey()
+	{
+		return new Keybind(KeyEvent.VK_A, InputEvent.CTRL_DOWN_MASK);
+	}
+
+	@ConfigItem(
+		keyName = "sightHotkey",
+		name = "Line of sight hotkey",
+		description = "Point at a tile and press this to see which tiles have a clear line to it. Press it on the same "
+			+ "tile again to clear.",
+		position = 6,
+		section = markingSection
+	)
+	default Keybind sightHotkey()
+	{
+		return new Keybind(KeyEvent.VK_S, InputEvent.CTRL_DOWN_MASK);
 	}
 
 	@ConfigItem(
@@ -404,5 +455,43 @@ public interface QuickTilesConfig extends Config
 	default boolean minimap()
 	{
 		return false;
+	}
+
+	@Range(min = 1, max = 20)
+	@ConfigItem(
+		keyName = "sightRange",
+		name = "Range",
+		description = "How many tiles out from the pinned tile to check.",
+		position = 0,
+		section = sightSection
+	)
+	default int sightRange()
+	{
+		return 10;
+	}
+
+	@ConfigItem(
+		keyName = "sightStyle",
+		name = "Style",
+		description = "A light fill, or just an outline, which is gentlest on the eyes.",
+		position = 1,
+		section = sightSection
+	)
+	default SightStyle sightStyle()
+	{
+		return SightStyle.FILL;
+	}
+
+	@Alpha
+	@ConfigItem(
+		keyName = "sightColour",
+		name = "Colour",
+		description = "The colour of tiles with a clear line to the pinned tile. Lower its opacity for a fainter look.",
+		position = 2,
+		section = sightSection
+	)
+	default Color sightColour()
+	{
+		return new Color(0x5D, 0xCA, 0xA5, 70);
 	}
 }
