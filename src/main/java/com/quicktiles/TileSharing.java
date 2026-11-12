@@ -38,6 +38,7 @@ import javax.inject.Singleton;
 import net.runelite.api.Client;
 import net.runelite.api.MenuEntry;
 import net.runelite.api.WorldView;
+import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.client.game.chatbox.ChatboxPanelManager;
 import net.runelite.client.menus.MenuManager;
@@ -155,6 +156,12 @@ class TileSharing
 			return;
 		}
 
+		TilePattern pattern = store.parsePattern(text);
+		if (pattern != null)
+		{
+			promptPaste(pattern);
+			return;
+		}
 		List<TilePoint> tiles = store.parse(text);
 		if (tiles.isEmpty())
 		{
@@ -163,6 +170,61 @@ class TileSharing
 		}
 		chatboxPanelManager.openTextMenuInput("Import " + count(tiles.size()) + " from your clipboard?")
 			.option("Yes", () -> importTiles(tiles, "from your clipboard"))
+			.option("No", () ->
+			{
+			})
+			.build();
+	}
+
+	/**
+	 * WHAT: Copies the tiles within TilePattern.RADIUS of you as a pattern, relative to your tile.
+	 * WHY: A layout you made once (a boss's safe spots, a skilling route) can be pasted elsewhere.
+	 * PRE: Client thread.
+	 * POST: The pattern is on the clipboard and a chat message says how many tiles it holds.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	void copyPattern()
+	{
+		WorldPoint anchor = plugin.standingTile();
+		if (anchor == null)
+		{
+			return;
+		}
+		List<TilePoint> saved = new ArrayList<>();
+		for (int region : loadedRegions())
+		{
+			saved.addAll(store.get(region));
+		}
+		TilePattern pattern = TilePattern.around(anchor, saved, TilePattern.RADIUS);
+		if (pattern.tiles.isEmpty())
+		{
+			plugin.chat("Quick Tiles: there are no marked tiles within " + TilePattern.RADIUS + " tiles of you to copy as a pattern.");
+			return;
+		}
+		try
+		{
+			Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(store.patternJson(pattern)), null);
+		}
+		catch (IllegalStateException e)
+		{
+			plugin.chat("Quick Tiles: your clipboard is busy. Try again.");
+			return;
+		}
+		plugin.chat("Quick Tiles: copied a pattern of " + count(pattern.tiles.size()) + ". Stand where it should go and click Import to paste it.");
+	}
+
+	private void promptPaste(TilePattern pattern)
+	{
+		chatboxPanelManager.openTextMenuInput("Paste the " + count(pattern.tiles.size()) + " pattern around where you stand?")
+			.option("Yes", () -> plugin.getClientThread().invoke(() ->
+			{
+				WorldPoint anchor = plugin.standingTile();
+				if (anchor != null)
+				{
+					importTiles(pattern.placeAt(anchor), "from the pattern");
+				}
+			}))
 			.option("No", () ->
 			{
 			})

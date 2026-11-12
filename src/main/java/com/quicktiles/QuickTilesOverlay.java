@@ -31,6 +31,7 @@ import java.awt.Graphics2D;
 import java.awt.Polygon;
 import java.awt.RenderingHints;
 import java.awt.Stroke;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import javax.inject.Inject;
@@ -103,6 +104,10 @@ class QuickTilesOverlay extends Overlay
 		WorldPoint hovered = hoveredSceneTile(player);
 		String hoverNote = null;
 
+		if (config.tileLines())
+		{
+			drawLines(graphics, marked, playerTile, checkDistance);
+		}
 		for (Map.Entry<Integer, List<MarkedTile>> entry : marked.entrySet())
 		{
 			WorldView wv = client.getWorldView(entry.getKey());
@@ -239,13 +244,79 @@ class QuickTilesOverlay extends Overlay
 			}
 		}
 
-		String label = tile.getLabel();
-		if (config.showLabels() && label != null && !label.isEmpty())
+		String label = tileText(config.tileNumbers() ? tile.getNumber() : 0, config.showLabels() ? tile.getLabel() : null);
+		if (label != null)
 		{
 			Point textPoint = Perspective.getCanvasTextLocation(client, graphics, lp, label, 0);
 			if (textPoint != null)
 			{
 				OverlayUtil.renderTextLocation(graphics, textPoint, label, colour);
+			}
+		}
+	}
+
+	/**
+	 * WHAT: The text drawn on a tile: its number, its label, both ("3 Spawn"), or nothing.
+	 * WHY: Numbers and labels share the tile's middle, so they're joined rather than drawn over each other.
+	 * PRE: number is 0 when numbers are off; label is null when labels are off.
+	 * POST: Nothing changes.
+	 * RETURN: the text, or null for none
+	 * THROWS: Nothing.
+	 */
+	static String tileText(int number, String label)
+	{
+		boolean hasLabel = label != null && !label.isEmpty();
+		if (number <= 0)
+		{
+			return hasLabel ? label : null;
+		}
+		return hasLabel ? number + " " + label : String.valueOf(number);
+	}
+
+	/**
+	 * WHAT: Joins each group's tiles with a line, in the order they were marked.
+	 * WHY: Shows a route or a rotation at a glance; off by default.
+	 * PRE: Client thread. marked is worldview id to tiles, each list in marking order.
+	 * POST: Lines are drawn between consecutive tiles of a group that are both on screen.
+	 * RETURN: Nothing.
+	 * THROWS: Nothing.
+	 */
+	private void drawLines(Graphics2D graphics, Map<Integer, List<MarkedTile>> marked, WorldPoint playerTile, boolean checkDistance)
+	{
+		Stroke line = new BasicStroke(Math.max(1.5f, (float) config.borderWidth()));
+		for (Map.Entry<Integer, List<MarkedTile>> entry : marked.entrySet())
+		{
+			WorldView wv = client.getWorldView(entry.getKey());
+			if (wv == null)
+			{
+				continue;
+			}
+			Map<String, Point> last = new HashMap<>();
+			for (MarkedTile tile : entry.getValue())
+			{
+				WorldPoint point = tile.getPoint();
+				if (point.getPlane() != wv.getPlane() || (checkDistance && point.distanceTo(playerTile) >= MAX_DRAW_DISTANCE))
+				{
+					last.remove(tile.getGroup());
+					continue;
+				}
+				LocalPoint lp = LocalPoint.fromWorld(wv, point);
+				Point here = lp == null ? null : Perspective.localToCanvas(client, lp, wv.getPlane());
+				Point before = here == null ? null : last.get(tile.getGroup());
+				if (before != null)
+				{
+					graphics.setColor(tile.getColor() == null ? config.colour1() : tile.getColor());
+					graphics.setStroke(line);
+					graphics.drawLine(before.getX(), before.getY(), here.getX(), here.getY());
+				}
+				if (here == null)
+				{
+					last.remove(tile.getGroup());
+				}
+				else
+				{
+					last.put(tile.getGroup(), here);
+				}
 			}
 		}
 	}

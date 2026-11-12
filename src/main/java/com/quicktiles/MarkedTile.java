@@ -41,6 +41,9 @@ final class MarkedTile
 	private final String label;
 	@Nullable
 	private final String note;
+	// The group it's shown under ("" when ungrouped) and its place in it, from 1; 0 when unknown.
+	private final String group;
+	private final int number;
 
 	MarkedTile(WorldPoint point, @Nullable Color color, @Nullable String label)
 	{
@@ -49,10 +52,17 @@ final class MarkedTile
 
 	MarkedTile(WorldPoint point, @Nullable Color color, @Nullable String label, @Nullable String note)
 	{
+		this(point, color, label, note, "", 0);
+	}
+
+	MarkedTile(WorldPoint point, @Nullable Color color, @Nullable String label, @Nullable String note, String group, int number)
+	{
 		this.point = point;
 		this.color = color;
 		this.label = label;
 		this.note = note;
+		this.group = group == null ? "" : group;
+		this.number = number;
 	}
 
 	WorldPoint getPoint()
@@ -76,5 +86,21 @@ final class MarkedTile
 	String getNote()
 	{
 		return note;
+	}
+
+	/**
+	 * The group the tile is shown under, as a key ("" when ungrouped), for numbering and lines.
+	 */
+	String getGroup()
+	{
+		return group;
+	}
+
+	/**
+	 * Its place in its group, from 1, in the order the tiles were marked; 0 when unknown.
+	 */
+	int getNumber()
+	{
+		return number;
 	}
 }

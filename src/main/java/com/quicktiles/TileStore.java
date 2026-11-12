@@ -161,6 +161,46 @@ class TileStore
 		}
 	}
 
+	/**
+	 * WHAT: A pattern as clipboard text.
+	 * WHY: Uses the same colour format as tile exports.
+	 * PRE: pattern is not null.
+	 * POST: Nothing changes.
+	 * RETURN: the JSON text
+	 * THROWS: Nothing.
+	 */
+	String patternJson(TilePattern pattern)
+	{
+		return gson.toJson(pattern);
+	}
+
+	/**
+	 * WHAT: Reads pattern text, if that's what it is.
+	 * WHY: Import pastes a pattern at your feet; anything else is a normal tile import.
+	 * PRE: text may be null or anything at all.
+	 * POST: Nothing changes.
+	 * RETURN: the pattern, or null when the text isn't one
+	 * THROWS: Nothing.
+	 */
+	@Nullable
+	TilePattern parsePattern(@Nullable String text)
+	{
+		if (text == null || !text.trim().startsWith("{"))
+		{
+			return null;
+		}
+		try
+		{
+			TilePattern pattern = gson.fromJson(text.trim(), TilePattern.class);
+			return pattern != null && pattern.isValid() ? pattern : null;
+		}
+		catch (JsonParseException | IllegalStateException | ClassCastException e)
+		{
+			log.debug("Not a pattern", e);
+			return null;
+		}
+	}
+
 	String toJson(Collection<TilePoint> tiles)
 	{
 		return gson.toJson(tiles);

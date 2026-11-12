@@ -111,6 +111,9 @@ public class QuickTilesPlugin extends Plugin
 	private QuickTilesMinimapOverlay minimapOverlay;
 
 	@Inject
+	private QuickTilesCounterOverlay counterOverlay;
+
+	@Inject
 	private KeyManager keyManager;
 
 	@Inject
@@ -135,6 +138,8 @@ public class QuickTilesPlugin extends Plugin
 	 * Marked tiles in the loaded scene, by world view id (the main world, or a boat).
 	 */
 	private final Map<Integer, List<MarkedTile>> marked = new HashMap<>();
+	// Tiles shown around you per group name, worked out when tiles load, for the counter.
+	private volatile Map<String, Integer> nearbyCounts = Collections.emptyMap();
 
 	private boolean tilesVisible = true;
 
@@ -296,6 +301,7 @@ public class QuickTilesPlugin extends Plugin
 		tilesVisible = true;
 		overlayManager.add(overlay);
 		overlayManager.add(minimapOverlay);
+		overlayManager.add(counterOverlay);
 		for (KeyListener listener : listeners())
 		{
 			keyManager.registerKeyListener(listener);
@@ -317,6 +323,7 @@ public class QuickTilesPlugin extends Plugin
 	{
 		overlayManager.remove(overlay);
 		overlayManager.remove(minimapOverlay);
+		overlayManager.remove(counterOverlay);
 		for (KeyListener listener : listeners())
 		{
 			keyManager.unregisterKeyListener(listener);
@@ -1238,6 +1245,22 @@ public class QuickTilesPlugin extends Plugin
 		return tile == null ? null : WorldPoint.fromLocalInstance(client, tile.getLocalLocation());
 	}
 
+	/**
+	 * WHAT: The tile you're standing on, in saved (non-instance) coordinates.
+	 * WHY: Patterns are copied and pasted relative to where you stand.
+	 * PRE: Client thread.
+	 * POST: Nothing changes.
+	 * RETURN: the tile, or null when not logged in
+	 * THROWS: Nothing.
+	 */
+	@Nullable
+	WorldPoint standingTile()
+	{
+		Player player = client.getLocalPlayer();
+		net.runelite.api.coords.LocalPoint lp = player == null ? null : player.getLocalLocation();
+		return lp == null ? null : WorldPoint.fromLocalInstance(client, lp);
+	}
+
 	// ---- loading ----
 
 	void loadTiles()
@@ -1264,21 +1287,31 @@ public class QuickTilesPlugin extends Plugin
 			return;
 		}
 		List<MarkedTile> tiles = new ArrayList<>();
+		// Each group's tiles are numbered in the order they were marked (the order they're saved in).
+		Map<String, Integer> numbers = new HashMap<>();
+		Map<String, Integer> counts = new java.util.LinkedHashMap<>();
 		for (int region : mapRegions)
 		{
 			for (TilePoint saved : store.get(region))
 			{
-				if (groups.isHidden(groups.groupOf(saved)))
+				String group = groups.groupOf(saved);
+				if (groups.isHidden(group))
 				{
 					continue;
 				}
+				int number = numbers.merge(TileGroups.key(group), 1, Integer::sum);
+				counts.merge(TileGroups.display(group), 1, Integer::sum);
 				for (WorldPoint local : WorldPoint.toLocalInstance(wv, saved.toWorldPoint()))
 				{
-					tiles.add(new MarkedTile(local, saved.getColor(), saved.getLabel(), saved.getNote()));
+					tiles.add(new MarkedTile(local, saved.getColor(), saved.getLabel(), saved.getNote(), TileGroups.key(group), number));
 				}
 			}
 		}
 		marked.put(wv.getId(), tiles);
+		if (wv.isTopLevel())
+		{
+			nearbyCounts = Collections.unmodifiableMap(counts);
+		}
 	}
 
 	// ---- for overlays, the panel and sharing ----
@@ -1286,6 +1319,19 @@ public class QuickTilesPlugin extends Plugin
 	Map<Integer, List<MarkedTile>> getMarked()
 	{
 		return Collections.unmodifiableMap(marked);
+	}
+
+	/**
+	 * WHAT: How many tiles are shown around you, per group name.
+	 * WHY: The tile counter overlay; counted when tiles load, not every frame.
+	 * PRE: None.
+	 * POST: Nothing changes.
+	 * RETURN: group name to count, in the order first seen
+	 * THROWS: Nothing.
+	 */
+	Map<String, Integer> getNearbyCounts()
+	{
+		return nearbyCounts;
 	}
 
 	boolean isTilesVisible()

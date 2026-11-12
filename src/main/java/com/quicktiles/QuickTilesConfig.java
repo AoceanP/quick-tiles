@@ -457,6 +457,42 @@ public interface QuickTilesConfig extends Config
 		return false;
 	}
 
+	@ConfigItem(
+		keyName = "tileNumbers",
+		name = "Number tiles",
+		description = "Numbers each group's tiles 1, 2, 3... in the order you marked them, for step-by-step routes.",
+		position = 6,
+		section = appearanceSection
+	)
+	default boolean tileNumbers()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "tileLines",
+		name = "Lines between tiles",
+		description = "Joins each group's tiles with a line, in the order you marked them, to show a path.",
+		position = 7,
+		section = appearanceSection
+	)
+	default boolean tileLines()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "tileCounter",
+		name = "Tile counter",
+		description = "A small box with how many marked tiles are around you, in all and per group.",
+		position = 8,
+		section = appearanceSection
+	)
+	default boolean tileCounter()
+	{
+		return false;
+	}
+
 	@Range(min = 1, max = 20)
 	@ConfigItem(
 		keyName = "sightRange",

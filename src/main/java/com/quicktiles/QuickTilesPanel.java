@@ -300,7 +300,7 @@ class QuickTilesPanel extends PluginPanel
 		export[0] = button("Export...", "Copy tiles to paste elsewhere, or to share", true,
 			() -> exportMenu().show(export[0], 0, export[0].getHeight()));
 		grid.add(export[0]);
-		grid.add(button("Import", "Add tiles from your clipboard (Quick Tiles, Ground Markers or a tile pack)", true,
+		grid.add(button("Import", "Add tiles from your clipboard (Quick Tiles, Ground Markers or a tile pack), or paste a pattern where you stand", true,
 			() -> plugin.getClientThread().invoke(() -> plugin.getSharing().promptImport())));
 		JPanel wrap = new JPanel(new BorderLayout(0, 4));
 		wrap.setOpaque(false);
@@ -332,6 +332,9 @@ class QuickTilesPanel extends PluginPanel
 		menu.add(group);
 		menu.add(item("An area you pick (" + keyText(config.areaHotkey()) + " on two corners)",
 			() -> plugin.getClientThread().invoke(plugin::armAreaExport)));
+		menu.addSeparator();
+		menu.add(item("A pattern around you (paste it anywhere with Import)",
+			() -> plugin.getClientThread().invoke(() -> plugin.getSharing().copyPattern())));
 		return menu;
 	}
 

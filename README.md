@@ -54,6 +54,14 @@ Press the *Show/hide hotkey* to hide every tile, e.g. for a clean screenshot, an
 - Fill opacity and border width
 - Optional labels, minimap dots, and hiding the tile you're standing on
 
+## Routes and counts
+
+All off until you turn them on in the settings, under Appearance:
+
+- **Number tiles:** each group's tiles show 1, 2, 3... in the order you marked them, for step-by-step routes. With labels on, the number goes in front, such as "3 Spawn".
+- **Lines between tiles:** each group's tiles are joined by a line in that order, to show a path or a rotation.
+- **Tile counter:** a small box with how many marked tiles are around you, in all and per group.
+
 ## Sharing and moving from Ground Markers
 
 Right-click the world map orb next to the minimap:
@@ -64,5 +72,7 @@ Right-click the world map orb next to the minimap:
 - **Clear Quick Tiles** removes the tiles around you, after asking first.
 
 Exports use the same format as Ground Markers, so tile packs shared on the wiki and Reddit paste straight in, and your Quick Tiles paste into Ground Markers too. Tiles exported from a group carry the group's name, so a friend importing them gets the same group.
+
+**Patterns:** Export > *A pattern around you* copies the tiles within 10 tiles of you as a shape, relative to where you stand. Stand anywhere else (another spot, another instance, or a friend's game) and click **Import** to paste the same shape around you. Colours, labels, notes and groups come along.
 
 Tiles are saved in your RuneLite profile, per map region, and work inside instances.
